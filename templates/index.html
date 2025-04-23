@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - AI Travel Planner</title>
+    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="static/css/custom-styles.css">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+            padding: 120px 0;
+        }
+
+        .feature-card {
+            transition: all 0.3s ease;
+            border: none;
+            border-radius: 15px;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+        }
+
+        .nav-gradient {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+        }
+
+        .floating {
+            animation: floating 3s ease-in-out infinite;
+        }
+
+        @keyframes floating {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .testimonial-card {
+            border-radius: 15px;
+            overflow: hidden;
+            transition: transform 0.3s ease;
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .testimonial-card:hover {
+            transform: scale(1.02);
+        }
+
+        .footer-links a {
+            transition: all 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            color: #fff !important;
+            transform: translateX(5px);
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark nav-gradient fixed-top shadow-sm">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <img src="static/images/logo.png" alt="Logo" height="40" class="rounded-circle me-2">
+                <span class="fs-5 fw-bold">AI Travel Planner</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item mx-2">
+                        <a class="nav-link btn btn-outline-light rounded-pill px-4" href="login.html">Login</a>
+                    </li>
+                    <li class="nav-item mx-2">
+                        <a class="nav-link btn btn-primary rounded-pill px-4" href="signup.html">Sign Up</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero-section text-white">
+        <div class="container text-center position-relative">
+            <div class="floating">
+                <img src="static/images/logo.png" alt="Logo" width="120" class="mb-4">
+            </div>
+            <h1 class="display-3 fw-bold mb-4">Revolutionize Your Travel Experience</h1>
+            <p class="lead fs-4 mb-5">AI-powered itineraries • Real-time weather integration • Smart route optimization</p>
+            <a href="forum.html" class="btn btn-light btn-lg rounded-pill px-5 py-3 shadow-lg">
+                <i class="fas fa-magic me-2"></i>Start Planning Now
+            </a>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="py-7 bg-white">
+        <div class="container">
+            <div class="text-center mb-6">
+                <h2 class="display-5 fw-bold mb-5">Why Choose AI Travel Planner?</h2>
+                <div class="row g-4">
+                    <!-- Feature 1 -->
+                    <div class="col-lg-4">
+                        <div class="feature-card shadow">
+                            <i class="fas fa-brain fa-3x text-primary mb-4"></i>
+                            <h3 class="h4 mb-3">Smart Itinerary Generation</h3>
+                            <p class="text-muted">Advanced AI analyzes millions of data points to create your perfect trip plan</p>
+                        </div>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div class="col-lg-4">
+                        <div class="feature-card shadow">
+                            <i class="fas fa-cloud-sun fa-3x text-primary mb-4"></i>
+                            <h3 class="h4 mb-3">Live Weather Integration</h3>
+                            <p class="text-muted">Real-time weather forecasts automatically adjust your daily plans</p>
+                        </div>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div class="col-lg-4">
+                        <div class="feature-card shadow">
+                            <i class="fas fa-route fa-3x text-primary mb-4"></i>
+                            <h3 class="h4 mb-3">Optimal Route Planning</h3>
+                            <p class="text-muted">Machine learning algorithms optimize travel routes between destinations</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="py-7 bg-light">
+        <div class="container">
+            <h2 class="display-5 fw-bold text-center mb-5">Traveler Experiences</h2>
+            <div class="row g-4">
+                <!-- Testimonial 1 -->
+                <div class="col-lg-4">
+                    <div class="testimonial-card shadow">
+                        <div class="p-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <img src="static/images/user1.jpg" alt="User" class="rounded-circle me-3" width="60">
+                                <div>
+                                    <h5 class="mb-0">Sarah Johnson</h5>
+                                    <small class="text-muted">Paris Explorer</small>
+                                </div>
+                            </div>
+                            <p class="text-muted">"The AI suggestions helped us discover hidden gems we'd never find in guidebooks!"</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Testimonial 2 -->
+                <div class="col-lg-4">
+                    <div class="testimonial-card shadow">
+                        <div class="p-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <img src="static/images/user2.jpg" alt="User" class="rounded-circle me-3" width="60">
+                                <div>
+                                    <h5 class="mb-0">Mike Chen</h5>
+                                    <small class="text-muted">Adventure Traveler</small>
+                                </div>
+                            </div>
+                            <p class="text-muted">"Saved 3 hours daily with optimized routes. A must for serious travelers!"</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Testimonial 3 -->
+                <div class="col-lg-4">
+                    <div class="testimonial-card shadow">
+                        <div class="p-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <img src="static/images/user3.jpg" alt="User" class="rounded-circle me-3" width="60">
+                                <div>
+                                    <h5 class="mb-0">Emma Wilson</h5>
+                                    <small class="text-muted">Family Travel Blogger</small>
+                                </div>
+                            </div>
+                            <p class="text-muted">"Budget tracking and kid-friendly suggestions made our vacation perfect!"</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-7 bg-primary text-white">
+        <div class="container text-center">
+            <h2 class="display-5 fw-bold mb-4">Start Your Journey Today</h2>
+            <p class="fs-5 mb-5">Join our community of 500,000+ satisfied travelers</p>
+            <div class="d-flex justify-content-center gap-3">
+                <a href="signup.html" class="btn btn-light btn-lg rounded-pill px-5 py-3 shadow">
+                    <i class="fas fa-rocket me-2"></i>Get Started Free
+                </a>
+                <a href="forum.html" class="btn btn-outline-light btn-lg rounded-pill px-5 py-3 shadow">
+                    <i class="fas fa-play-circle me-2"></i>Watch Demo
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Detailed Footer -->
+    <footer class="bg-dark text-white py-5">
+        <div class="container">
+            <div class="row g-5">
+                <!-- Company Info -->
+                <div class="col-lg-4">
+                    <div class="mb-4">
+                        <img src="static/images/logo.png" alt="Logo" width="120" class="mb-3">
+                        <p class="text-muted">Pioneering AI-driven travel solutions since 2024</p>
+                    </div>
+                    <div class="mb-4">
+                        <h5>Connect With Us</h5>
+                        <div class="d-flex gap-3 mt-3">
+                            <a href="#" class="text-white fs-5"><i class="fab fa-twitter"></i></a>
+                            <a href="#" class="text-white fs-5"><i class="fab fa-instagram"></i></a>
+                            <a href="#" class="text-white fs-5"><i class="fab fa-linkedin"></i></a>
+                            <a href="#" class="text-white fs-5"><i class="fab fa-youtube"></i></a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer Links -->
+                <div class="col-lg-8">
+                    <div class="row">
+                        <div class="col-md-4 footer-links">
+                            <h5>Company</h5>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">About Us</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Careers</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Press</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Partnerships</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Sustainability</a></li>
+                            </ul>
+                        </div>
+                        
+                        <div class="col-md-4 footer-links">
+                            <h5>Resources</h5>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Blog</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">API Docs</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Mobile App</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Research</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Security</a></li>
+                            </ul>
+                        </div>
+
+                        <div class="col-md-4 footer-links">
+                            <h5>Support</h5>
+                            <ul class="list-unstyled">
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Help Center</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Contact Us</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">System Status</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Privacy Policy</a></li>
+                                <li class="mb-2"><a href="#" class="text-muted text-decoration-none">Terms of Service</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Footer Sections -->
+            <div class="row mt-5">
+                <div class="col-md-6">
+                    <h5>Stay Updated</h5>
+                    <div class="input-group mb-3">
+                        <input type="email" class="form-control bg-dark text-white" placeholder="Enter your email">
+                        <button class="btn btn-primary" type="button">Subscribe</button>
+                    </div>
+                    <p class="text-muted small">Receive travel tips and feature updates</p>
+                </div>
+                
+                <div class="col-md-6">
+                    <h5>Contact</h5>
+                    <ul class="list-unstyled text-muted">
+                        <li class="mb-2"><i class="fas fa-map-marker-alt me-2"></i>Global Innovation Hub, Silicon Valley</li>
+                        <li class="mb-2"><i class="fas fa-phone me-2"></i>+1 (888) 555-TRAVEL</li>
+                        <li class="mb-2"><i class="fas fa-envelope me-2"></i>support@aitravel.com</li>
+                    </ul>
+                </div>
+            </div>
+
+            <hr class="my-5">
+
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="text-muted mb-0">ISO 27001 Certified • Carbon Neutral Partner</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="text-muted mb-0">© 2024 AI Travel Planner. All rights reserved.</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="static/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

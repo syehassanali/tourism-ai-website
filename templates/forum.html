@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Preferences - AI Travel Planner</title>
+    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="static/css/custom-styles.css">
+    <style>
+        .form-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .input-group-icon {
+            width: 50px;
+            height: 50px;
+            background: rgba(52, 152, 219, 0.1);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+        }
+
+        .activity-card {
+            transition: all 0.3s ease;
+            border: 2px solid rgba(52, 152, 219, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            cursor: pointer;
+        }
+
+        .activity-card:hover {
+            transform: translateY(-5px);
+            border-color: #3498db;
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.2);
+        }
+
+        .activity-card.selected {
+            border-color: #3498db;
+            background: rgba(52, 152, 219, 0.05);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            padding: 1rem;
+        }
+
+        .progress-step::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: #dee2e6;
+            z-index: -1;
+        }
+
+        .progress-step.active {
+            color: #3498db;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary-gradient shadow-sm fixed-top">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center" href="index.html">
+                <img src="static/images/logo.png" alt="AI Travel Planner" height="40" class="me-2">
+                <span class="fw-bold">AI Travel Planner</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Progress Steps -->
+    <div class="container pt-7">
+        <div class="progress-steps">
+            <div class="progress-step active">
+                <i class="fas fa-map-marked fa-lg mb-2"></i>
+                <div>Basic Details</div>
+            </div>
+            <div class="progress-step">
+                <i class="fas fa-sliders-h fa-lg mb-2"></i>
+                <div>Preferences</div>
+            </div>
+            <div class="progress-step">
+                <i class="fas fa-magic fa-lg mb-2"></i>
+                <div>Generate</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <form id="travel-form" class="form-section p-5">
+                    <!-- Trip Details Section -->
+                    <section class="mb-5">
+                        <h3 class="mb-4 text-primary"><i class="fas fa-map-marked-alt me-2"></i>Trip Details</h3>
+                        <div class="row g-4">
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-4">
+                                    <div class="input-group-icon">
+                                        <i class="fas fa-map-marker-alt text-primary fa-lg"></i>
+                                    </div>
+                                    <div class="w-100">
+                                        <label for="destination" class="form-label fw-medium mb-1">Destination</label>
+                                        <input type="text" id="destination" name="destination" 
+                                               class="form-control form-control-lg" 
+                                               placeholder="Where would you like to go?" required>
+                                        <small class="text-muted">City, country, or region</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-4">
+                                    <div class="input-group-icon">
+                                        <i class="fas fa-calendar-day text-primary fa-lg"></i>
+                                    </div>
+                                    <div class="w-100">
+                                        <label for="travel-date" class="form-label fw-medium mb-1">Travel Date</label>
+                                        <input type="date" id="travel-date" name="travel_date" 
+                                               class="form-control form-control-lg" required>
+                                        <small class="text-muted">Approximate start date</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-4">
+                                    <div class="input-group-icon">
+                                        <i class="fas fa-clock text-primary fa-lg"></i>
+                                    </div>
+                                    <div class="w-100">
+                                        <label for="travel-days" class="form-label fw-medium mb-1">Trip Duration</label>
+                                        <input type="number" id="travel-days" name="travel_days" 
+                                               class="form-control form-control-lg" 
+                                               placeholder="Number of days" min="1" required>
+                                        <small class="text-muted">Total trip duration in days</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Preferences Section -->
+                    <section class="mb-5">
+                        <h3 class="mb-4 text-primary"><i class="fas fa-sliders-h me-2"></i>Preferences</h3>
+                        <div class="row g-4">
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-4">
+                                    <div class="input-group-icon">
+                                        <i class="fas fa-coins text-primary fa-lg"></i>
+                                    </div>
+                                    <div class="w-100">
+                                        <label class="form-label fw-medium mb-1">Budget Level</label>
+                                        <select id="budget" name="budget" class="form-select form-select-lg" required>
+                                            <option value="" disabled selected>Select budget range</option>
+                                            <option value="low">Budget (Under $100/day)</option>
+                                            <option value="medium">Comfortable ($100-$300/day)</option>
+                                            <option value="high">Luxury ($300+/day)</option>
+                                        </select>
+                                        <small class="text-muted">Estimated daily spending</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-4">
+                                    <div class="input-group-icon">
+                                        <i class="fas fa-users text-primary fa-lg"></i>
+                                    </div>
+                                    <div class="w-100">
+                                        <label class="form-label fw-medium mb-1">Travel Group</label>
+                                        <select id="companions" name="companions" 
+                                                class="form-select form-select-lg" required>
+                                            <option value="" disabled selected>Select travel companions</option>
+                                            <option value="solo">Solo Traveler</option>
+                                            <option value="couple">Couple/Romantic</option>
+                                            <option value="family">Family with Children</option>
+                                            <option value="friends">Group of Friends</option>
+                                        </select>
+                                        <small class="text-muted">Who's joining you?</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <label class="form-label fw-medium d-block mb-3">
+                                <i class="fas fa-running me-2"></i>Preferred Activities
+                            </label>
+                            <div class="activity-grid row g-3">
+                                <div class="col-md-6">
+                                    <div class="activity-card">
+                                        <input type="checkbox" class="form-check-input" id="city" name="activities" value="city">
+                                        <label class="form-check-label w-100" for="city">
+                                            <i class="fas fa-city me-2"></i>
+                                            <div class="fw-medium">City Exploration</div>
+                                            <small class="text-muted">Museums, architecture, urban experiences</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="activity-card">
+                                        <input type="checkbox" class="form-check-input" id="beaches" name="activities" value="beaches">
+                                        <label class="form-check-label w-100" for="beaches">
+                                            <i class="fas fa-umbrella-beach me-2"></i>
+                                            <div class="fw-medium">Beach & Relaxation</div>
+                                            <small class="text-muted">Coastal areas, resorts, water sports</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="activity-card">
+                                        <input type="checkbox" class="form-check-input" id="hiking" name="activities" value="hiking">
+                                        <label class="form-check-label w-100" for="hiking">
+                                            <i class="fas fa-hiking me-2"></i>
+                                            <div class="fw-medium">Outdoor Adventures</div>
+                                            <small class="text-muted">Hiking, camping, nature trails</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="activity-card">
+                                        <input type="checkbox" class="form-check-input" id="food" name="activities" value="food">
+                                        <label class="form-check-label w-100" for="food">
+                                            <i class="fas fa-utensils me-2"></i>
+                                            <div class="fw-medium">Culinary Experiences</div>
+                                            <small class="text-muted">Local cuisine, food tours, cooking classes</small>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Form Actions -->
+                    <div class="d-grid gap-3 mt-5">
+                        <button type="submit" class="btn btn-primary-gradient btn-lg py-3 fw-bold">
+                            <i class="fas fa-magic me-2"></i>Generate Smart Itinerary
+                        </button>
+                        
+                        <div class="loading-spinner text-center">
+                            <div class="spinner-grow text-primary" style="width: 3rem; height: 3rem;" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <h5 class="mt-4 text-primary">Crafting Your Perfect Journey</h5>
+                            <p class="text-muted">Analyzing preferences • Optimizing routes • Checking weather</p>
+                        </div>
+
+                        <button id="show-result-btn" class="btn btn-success-gradient btn-lg py-3 fw-bold">
+                            <i class="fas fa-map-marked me-2"></i>View Your AI-Powered Itinerary
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <div id="activity-error" class="alert alert-danger d-none mt-3">
+        Please select at least one activity
+    </div>
+    <!-- Loading Overlay -->
+    <div class="loading-overlay">
+        <div class="text-center">
+            <div class="spinner-grow text-primary" style="width: 4rem; height: 4rem;" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h3 class="mt-4 text-primary">Generating Your Itinerary</h3>
+            <p class="text-muted">This usually takes 10-15 seconds</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-5 mt-7">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <img src="static/images/logo.png" alt="Logo" width="80" class="mb-3">
+                    <p class="text-muted">Crafting smart travel experiences through AI innovation</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="d-flex gap-3 justify-content-end">
+                        <a href="#" class="text-white"><i class="fab fa-twitter fa-lg"></i></a>
+                        <a href="#" class="text-white"><i class="fab fa-instagram fa-lg"></i></a>
+                        <a href="#" class="text-white"><i class="fab fa-facebook fa-lg"></i></a>
+                    </div>
+                </div>
+            </div>
+            <hr class="my-5">
+            <p class="text-center text-muted mb-0">&copy; 2024 AI Travel Planner. All rights reserved.</p>
+        </div>
+    </footer>
+    <script>
+        const form = document.getElementById("travel-form");
+        const loadingOverlay = document.querySelector(".loading-overlay");
+        const showResultBtn = document.getElementById("show-result-btn");
+    
+        // Initialize showResultBtn as hidden
+        showResultBtn.style.display = 'none';
+    
+        // Activity Card Selection
+        document.querySelectorAll('.activity-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const checkbox = card.querySelector('input[type="checkbox"]');
+                checkbox.checked = !checkbox.checked;
+                card.classList.toggle('selected', checkbox.checked);
+            });
+        });
+    
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            // Reset previous errors
+            document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
+            document.getElementById('activity-error').classList.add('d-none');
+    
+            // Validate form fields
+            let isValid = true;
+            const requiredFields = {
+                '#destination': 'Destination is required',
+                '#travel-date': 'Travel date is required',
+                '#travel-days': 'Travel duration is required',
+                '#budget': 'Budget level is required',
+                '#companions': 'Travel group is required'
+            };
+    
+            // Check required fields
+            Object.entries(requiredFields).forEach(([selector, message]) => {
+                const field = document.querySelector(selector);
+                if (!field.value.trim()) {
+                    field.classList.add('is-invalid');
+                    showError(message);
+                    isValid = false;
+                }
+            });
+    
+            // Check activities
+            const activities = document.querySelectorAll("input[name='activities']:checked");
+            if (activities.length === 0) {
+                document.getElementById('activity-error').classList.remove('d-none');
+                isValid = false;
+            }
+    
+            if (!isValid) return;
+    
+            loadingOverlay.style.display = 'flex';
+            showResultBtn.style.display = 'none'; // Ensure button stays hidden until success
+            
+            try {
+                const formData = new FormData(form);
+                const requestData = Object.fromEntries(formData.entries());
+                requestData.activities = Array.from(activities).map(cb => cb.value);
+    
+                const response = await fetch("http://127.0.0.1:5000/generate-itinerary", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(requestData)
+                });
+    
+                const result = await response.json();
+                
+                if (!response.ok || !result.itinerary_id) {
+                    throw new Error(result.message || 'Failed to generate itinerary');
+                }
+    
+                localStorage.setItem('itineraryData', JSON.stringify(result));
+                showResultBtn.style.display = 'block';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                loadingOverlay.style.display = 'none';
+            }
+        });
+    
+        function showError(message) {
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger alert-dismissible fade show mt-3';
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            form.prepend(alert);
+        }
+    
+        showResultBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            if (!localStorage.getItem('itineraryData')) {
+                showError('Please generate an itinerary first');
+                return;
+            }
+            window.location.href = `results.html?itinerary_id=${JSON.parse(localStorage.getItem('itineraryData')).itinerary_id}`;
+        });
+    </script>
+</body>
+</html>
