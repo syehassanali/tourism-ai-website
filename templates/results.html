@@ -3,263 +3,419 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Travel Itinerary - AI Travel Planner</title>
-    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    
+    <!-- Bootstrap CSS with fallback -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" 
+          rel="stylesheet" 
+          integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" 
+          crossorigin="anonymous">
+    <script>
+    window.addEventListener('DOMContentLoaded', function() {
+        if(typeof bootstrap === 'undefined') {
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '{{ url_for("static", filename="css/bootstrap.min.css") }}';
+            document.head.appendChild(link);
+        }
+    });
+    </script>
+
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="static/css/custom-styles.css">
+
     <style>
-        .hero-section {
-            background: linear-gradient(135deg, #2c3e50, #3498db);
-            color: white;
-            border-radius: 15px;
-            margin-top: 2rem;
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
         }
-        .timeline {
-            border-left: 3px solid #3498db;
-            position: relative;
-            padding-left: 2rem;
+
+        .bg-primary-gradient {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+        }
+
+        .city-carousel {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .city-carousel img {
+            height: 450px;
+            object-fit: cover;
+            width: 100%;
+        }
+
+        .carousel-control-prev,
+        .carousel-control-next {
+            width: 5%;
+            background: rgba(0,0,0,0.2);
+        }
+
+        .time-slot-card {
+            border-left: 3px solid var(--primary-color);
+            padding-left: 1.5rem;
             margin-left: 1rem;
-        }
-        .day-card {
-            transition: transform 0.3s ease;
-            border: none;
-            border-radius: 15px;
             position: relative;
             margin-bottom: 2rem;
         }
-        .day-card::before {
+
+        .time-slot-card::before {
             content: '';
             position: absolute;
-            left: -2.3rem;
-            top: 1.5rem;
-            width: 20px;
-            height: 20px;
-            background: #3498db;
+            left: -0.8rem;
+            top: 1rem;
+            width: 1.5rem;
+            height: 1.5rem;
+            background: var(--primary-color);
             border-radius: 50%;
-            z-index: 2;
         }
-        .weather-card {
-            background: linear-gradient(145deg, #ffffff, #f8f9fa);
+
+        .map-container {
+            height: 400px;
             border-radius: 15px;
             overflow: hidden;
+            border: 2px solid rgba(52, 152, 219, 0.1);
         }
-        .activity-badge {
+
+        .weather-card {
+            transition: all 0.3s ease;
+            border-radius: 15px;
+            background: rgba(255,255,255,0.9);
+        }
+
+        .weather-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .activity-time {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+
+        .travel-duration {
             background: rgba(52, 152, 219, 0.1);
-            color: #2c3e50;
-            border-radius: 8px;
-            padding: 8px 15px;
-        }
-        .scroll-horizontal {
-            overflow-x: auto;
-            white-space: nowrap;
-            padding-bottom: 1rem;
-        }
-        .weather-pill {
-            background: rgba(255, 255, 255, 0.9);
+            padding: 0.25rem 0.75rem;
             border-radius: 20px;
-            padding: 1rem;
-            margin-right: 1rem;
-            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
-            display: inline-block;
-            min-width: 120px;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
         }
-        .activity-item {
-            padding: 1rem;
-            background: rgba(241, 243, 245, 0.3);
-            border-radius: 10px;
-            transition: all 0.2s ease;
+
+        .print-only {
+            display: none;
         }
-        .activity-item:hover {
-            background: rgba(241, 243, 245, 0.5);
-            transform: translateX(5px);
-        }
-        .activity-divider {
-            border-top: 1px dashed #dee2e6;
-            opacity: 0.5;
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .print-only {
+                display: block !important;
+            }
+            .card {
+                border: none !important;
+                box-shadow: none !important;
+            }
         }
     </style>
 </head>
 <body class="bg-light">
-
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary-gradient shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary-gradient shadow-sm no-print">
         <div class="container">
-            <a class="navbar-brand d-flex align-items-center" href="index.html">
-                <img src="static/images/logo.png" alt="AI Travel Planner" height="40" class="me-2">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" 
+                     alt="AI Travel Planner Logo" 
+                     height="40" 
+                     class="me-2">
                 <span class="fw-bold">AI Travel Planner</span>
             </a>
         </div>
     </nav>
 
+    {% if not itinerary %}
+    <div class="alert alert-danger mt-5">
+        <h4>Error Loading Itinerary</h4>
+        <p>Failed to load itinerary data. Please check the itinerary ID or try again later.</p>
+        <a href="/" class="btn btn-outline-danger">
+            <i class="fas fa-arrow-left me-2"></i>Back to Planner
+        </a>
+    </div>
+    {% else %}
+    
     <!-- Main Content -->
     <main class="container py-5">
-        <!-- Hero Section -->
-        <div class="hero-section p-5 mb-5 text-center position-relative">
-            <h1 class="display-5 fw-bold mb-3">Your Perfect Itinerary</h1>
-            <div class="d-flex justify-content-center gap-4 flex-wrap" id="trip-summary"></div>
-        </div>
+        <!-- City Overview -->
+        <section class="mb-5">
+            {% if itinerary.city_info and itinerary.city_info.images %}
+            <div id="cityCarousel" class="carousel slide city-carousel" data-bs-ride="carousel">
+                <div class="carousel-inner">
+                    {% for img in itinerary.city_info.images %}
+                    <div class="carousel-item {% if loop.first %}active{% endif %}">
+                        <img src="{{ img }}" 
+                             class="d-block w-100" 
+                             alt="{{ itinerary.destination }} view" 
+                             loading="lazy">
+                    </div>
+                    {% endfor %}
+                </div>
+                <button class="carousel-control-prev" type="button" data-bs-target="#cityCarousel" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                    <span class="visually-hidden">Previous</span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#cityCarousel" data-bs-slide="next">
+                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                    <span class="visually-hidden">Next</span>
+                </button>
+            </div>
+            {% endif %}
+            
+            <h1 class="display-5 fw-bold mt-4 text-center">{{ itinerary.destination|default("Your Destination", true) }}</h1>
+            {% if itinerary.city_info and itinerary.city_info.description %}
+            <p class="lead text-muted text-center mb-0">{{ itinerary.city_info.description }}</p>
+            {% endif %}
+        </section>
 
-        <!-- Itinerary Timeline -->
+        <!-- Itinerary Content -->
         <div class="row g-4">
+            <!-- Main Itinerary -->
             <div class="col-lg-8">
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white border-bottom">
-                        <h3 class="mb-0"><i class="fas fa-route me-2 text-primary"></i>Daily Plan</h3>
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white border-bottom py-3">
+                        <h3 class="mb-0"><i class="fas fa-route me-2 text-primary"></i>Daily Schedule</h3>
                     </div>
                     <div class="card-body">
-                        <div class="timeline" id="itinerary-timeline"></div>
+                       <!-- Replace the existing itinerary section with this -->
+{% if itinerary.itinerary %}
+{% for day_number, schedule in itinerary.itinerary.items() %}
+<div class="day-card mb-5">
+    <h4 class="mb-4 text-primary">{{ day_number }}</h4>
+    {% for time_slot, activities in schedule.items() %}
+    <div class="time-slot-card">
+        <h5 class="text-secondary mb-3">{{ time_slot }}</h5>
+        {% if activities %}
+            {% for activity in activities %}
+            <div class="card mb-3 border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h5 class="mb-1">{{ activity.name|default("Activity", true) }}</h5>
+                            {% if activity.address %}
+                            <p class="text-muted mb-2 small">{{ activity.address }}</p>
+                            {% endif %}
+                            <div class="activity-time">
+                                <i class="fas fa-clock me-1 text-primary"></i>
+                                {{ activity.start_time|default("09:00") }} - {{ activity.end_time|default("18:00") }}
+                                {% if activity.travel_time %}
+                                <span class="travel-duration ms-2">
+                                    <i class="fas fa-car me-1 text-primary"></i>{{ activity.travel_time }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if activity.rating %}
+                        <div class="badge bg-warning text-dark">
+                            <i class="fas fa-star"></i> {{ activity.rating|round(1) }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">No activities planned for this time slot</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-warning">No itinerary data available</div>
+{% endif %}
                     </div>
                 </div>
             </div>
 
-            <!-- Weather & Details Sidebar -->
+            <!-- Sidebar -->
             <div class="col-lg-4">
-                <div class="weather-card shadow-sm p-4 mb-4">
-                    <h4 class="mb-4"><i class="fas fa-cloud-sun me-2 text-primary"></i>Weather Forecast</h4>
-                    <div class="scroll-horizontal" id="weather-scroll"></div>
-                </div>
-                
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white border-bottom">
-                        <h4 class="mb-0"><i class="fas fa-info-circle me-2 text-primary"></i>Trip Details</h4>
+                <!-- Route Map -->
+                {% if itinerary.map_data and itinerary.map_data.places %}
+                <div class="card mb-4 shadow-sm border-0 no-print">
+                    <div class="card-header bg-white border-bottom py-3">
+                        <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2 text-primary"></i>Travel Route</h5>
                     </div>
-                    <div class="card-body" id="trip-details"></div>
+                    <div class="card-body p-0">
+                        <div id="routeMap" class="map-container"></div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Weather Forecast -->
+                {% if itinerary.weather %}
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white border-bottom py-3">
+                        <h5 class="mb-0"><i class="fas fa-cloud-sun me-2 text-primary"></i>Weather Forecast</h5>
+                    </div>
+                    <div class="card-body">
+                        {% for forecast in itinerary.weather %}
+                        <div class="weather-card card mb-3">
+                            <div class="card-body py-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-0">{{ forecast.date|default("N/A") }}</h6>
+                                        <p class="mb-0 text-muted small">{{ forecast.description|default("Weather data unavailable") }}</p>
+                                    </div>
+                                    {% if forecast.icon %}
+                                    <div class="text-end">
+                                        <h3 class="mb-0">{{ forecast.temp|default(0)|int }}°C</h3>
+                                        <img src="http://openweathermap.org/img/wn/{{ forecast.icon }}.png" 
+                                             alt="Weather icon" 
+                                             style="width: 50px;"
+                                             loading="lazy">
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Trip Details -->
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white border-bottom py-3">
+                        <h5 class="mb-0"><i class="fas fa-info-circle me-2 text-primary"></i>Trip Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <dl class="row">
+                            {% if itinerary.start_location %}
+                            <dt class="col-sm-5 text-muted">Start Location</dt>
+                            <dd class="col-sm-7">{{ itinerary.start_location }}</dd>
+                            {% endif %}
+
+                            {% if itinerary.travel_date %}
+                            <dt class="col-sm-5 text-muted">Travel Dates</dt>
+                            <dd class="col-sm-7">
+                                {{ itinerary.travel_date|default("N/A") }} 
+                                <span class="text-primary">({{ itinerary.travel_days|default(0) }} days)</span>
+                            </dd>
+                            {% endif %}
+
+                            {% if itinerary.companions %}
+                            <dt class="col-sm-5 text-muted">Travel Group</dt>
+                            <dd class="col-sm-7 text-capitalize">{{ itinerary.companions }}</dd>
+                            {% endif %}
+
+                            {% if itinerary.budget %}
+                            <dt class="col-sm-5 text-muted">Budget Level</dt>
+                            <dd class="col-sm-7 text-capitalize">{{ itinerary.budget }}</dd>
+                            {% endif %}
+                        </dl>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Action Button -->
-        <div class="text-center mt-5">
-            <button id="go-back-btn" class="btn btn-primary btn-lg px-5">
-                <i class="fas fa-arrow-left me-2"></i>Plan Another Trip
+        <!-- Action Buttons -->
+        <div class="text-center mt-5 no-print">
+            <button onclick="window.print()" class="btn btn-primary btn-lg px-5 me-3">
+                <i class="fas fa-print me-2"></i>Print Itinerary
             </button>
+            <button id="go-back-btn" class="btn btn-outline-primary btn-lg px-5">
+                <i class="fas fa-arrow-left me-2"></i>New Trip
+            </button>
+        </div>
+
+        <!-- Print Header -->
+        <div class="print-only text-center mb-4">
+            <h2>{{ itinerary.destination|default("Travel Itinerary") }}</h2>
+            <p class="text-muted">Generated on {{ now.strftime('%Y-%m-%d %H:%M') }}</p>
         </div>
     </main>
 
+
+
     <!-- Footer -->
-    <footer class="bg-dark text-white py-4 mt-5">
+    <footer class="bg-dark text-white py-4 mt-5 no-print">
         <div class="container text-center">
-            <p class="mb-0">&copy; 2024 AI Travel Planner. Crafting unforgettable journeys.</p>
+            <p class="mb-0 small">&copy; 2024 AI Travel Planner. All rights reserved.</p>
         </div>
     </footer>
 
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+    <!-- Google Maps Integration -->
+    {% if google_api_key and itinerary.map_data and itinerary.map_data.places %}
     <script>
-    document.addEventListener("DOMContentLoaded", async () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const itineraryId = urlParams.get('itinerary_id');
-        const timeline = document.getElementById("itinerary-timeline");
-        const tripSummary = document.getElementById("trip-summary");
-        const tripDetails = document.getElementById("trip-details");
-        const weatherScroll = document.getElementById("weather-scroll");
+        function initMap() {
+            try {
+                const placesData = JSON.parse('{{ itinerary.map_data.places|tojson|safe }}');
+                
+                if (!placesData?.length) {
+                    console.error('No places data available');
+                    return;
+                }
 
-        // Error handling for missing ID
-        if (!itineraryId) {
-            timeline.innerHTML = '<div class="alert alert-danger">No itinerary ID provided</div>';
-            return;
-        }
+                const mapOptions = {
+                    zoom: 12,
+                    center: { 
+                        lat: parseFloat(placesData[0].lat),
+                        lng: parseFloat(placesData[0].lng)
+                    },
+                    mapTypeId: 'roadmap',
+                    streetViewControl: false
+                };
 
-        try {
-            const response = await fetch(`http://127.0.0.1:5000/result/${itineraryId}`);
-            if (!response.ok) throw new Error("Failed to fetch data");
-            const data = await response.json();
-
-            // Trip Summary
-            tripSummary.innerHTML = `
-                <div class="summary-item">
-                    <div class="fs-5"><i class="fas fa-map-marker-alt"></i></div>
-                    <div class="fw-medium">${data.destination || 'N/A'}</div>
-                </div>
-                <div class="summary-item">
-                    <div class="fs-5"><i class="fas fa-calendar-day"></i></div>
-                    <div class="fw-medium">${data.travel_days || 0} Days</div>
-                </div>
-                <div class="summary-item">
-                    <div class="fs-5"><i class="fas fa-users"></i></div>
-                    <div class="fw-medium">${data.companions || 'N/A'}</div>
-                </div>`;
-
-            // Trip Details
-            tripDetails.innerHTML = `
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="text-muted">Budget:</span>
-                        <span class="fw-medium text-capitalize">${data.budget || 'N/A'}</span>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="text-muted">Main Activities:</span>
-                        <div>${(data.activities || []).map(a => `
-                            <span class="activity-badge">${a}</span>
-                        `).join('')}</div>
-                    </div>
-                </div>`;
-
-            // Itinerary Timeline
-            timeline.innerHTML = '';
-            if (data.itinerary) {
-                const itineraryDays = Array.isArray(data.itinerary) 
-                    ? data.itinerary 
-                    : Object.entries(data.itinerary).map(([dayName, activities]) => ({
-                        day: dayName,
-                        activities: Array.isArray(activities) ? activities : []
-                    }));
-
-                itineraryDays.forEach((day, index) => {
-                    const activities = Array.isArray(day.activities) ? day.activities : [];
-                    const dayElement = document.createElement('div');
-                    dayElement.className = 'day-card card mb-4 shadow-sm';
-                    dayElement.innerHTML = `
-                        <div class="card-header bg-white">
-                            <h5 class="mb-0">
-                                <i class="fas fa-map-marker-alt text-primary me-2"></i>
-                                ${day.day || `Day ${index + 1}`}
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            ${activities.length > 0 
-                                ? activities.map(activity => `
-                                    <div class="activity-item mb-4">
-                                        <div class="d-flex justify-content-between align-items-start mb-2">
-                                            <div>
-                                                <h6 class="mb-1">${activity.name || 'Activity'}</h6>
-                                                ${activity.address ? `<p class="text-muted small mb-1">${activity.address}</p>` : ''}
-                                            </div>
-                                            ${activity.price ? `<span class="badge bg-primary rounded-pill">$${activity.price}</span>` : ''}
-                                        </div>
-                                        <div class="d-flex gap-3 small text-muted">
-                                            ${activity.rating ? `<span><i class="fas fa-star text-warning"></i> ${activity.rating}</span>` : ''}
-                                            ${activity.user_ratings_total ? `<span>(${activity.user_ratings_total} reviews)</span>` : ''}
-                                            ${activity.travel_time ? `<span><i class="fas fa-clock"></i> ${activity.travel_time}</span>` : ''}
-                                            ${activity.travel_distance ? `<span><i class="fas fa-road"></i> ${activity.travel_distance}</span>` : ''}
-                                        </div>
-                                    </div>
-                                `).join('<hr class="activity-divider my-3">') 
-                                : '<p class="text-muted">No activities planned for this day</p>'}
-                        </div>`;
-                    timeline.appendChild(dayElement);
+                const map = new google.maps.Map(document.getElementById('routeMap'), mapOptions);
+                const directionsService = new google.maps.DirectionsService();
+                const directionsRenderer = new google.maps.DirectionsRenderer({
+                    map: map,
+                    suppressMarkers: true
                 });
-            } else {
-                timeline.innerHTML = '<div class="alert alert-warning">No itinerary details available</div>';
-            }
 
-            // Weather Forecast
-            if (data.weather?.length) {
-                weatherScroll.innerHTML = data.weather.map(forecast => `
-                    <div class="weather-pill text-center">
-                        <div class="fw-medium mb-2">${forecast.date || 'N/A'}</div>
-                        <div class="display-6 mb-2">${forecast.avg_temp || '0'}°C</div>
-                        <div class="text-muted small">${forecast.description || 'No data'}</div>
-                    </div>
-                `).join('');
-            }
+                const waypoints = placesData.slice(1).map(place => ({
+                    location: { lat: parseFloat(place.lat), lng: parseFloat(place.lng) },
+                    stopover: true
+                }));
 
-        } catch (error) {
-            timeline.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                directionsService.route({
+                    origin: "{{ itinerary.start_location|default('') }}",
+                    destination: "{{ itinerary.start_location|default('') }}",
+                    waypoints: waypoints,
+                    optimizeWaypoints: true,
+                    travelMode: 'DRIVING'
+                }, (response, status) => {
+                    if (status === 'OK') {
+                        directionsRenderer.setDirections(response);
+                    }
+                });
+
+            } catch (error) {
+                console.error('Map initialization error:', error);
+                const mapContainer = document.getElementById('routeMap');
+                if (mapContainer) {
+                    mapContainer.innerHTML = '<div class="alert alert-danger m-3">Failed to load map</div>';
+                }
+            }
         }
-
-        document.getElementById("go-back-btn").addEventListener("click", () => {
-            window.history.back();
-        });
-    });
     </script>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key={{ google_api_key }}&callback=initMap">
+    </script>
+    {% endif %}
+
+    <!-- App Scripts -->
+    <script>
+        document.getElementById('go-back-btn').addEventListener('click', () => {
+            window.location.href = '/';
+        });
+    </script>
+    {% endif %}
 </body>
 </html>

@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Travel Preferences - AI Travel Planner</title>
-    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+        <link rel="stylesheet" href="static/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="static/css/custom-styles.css">
+    <!-- Add this to the head section -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+
+
     <style>
         .form-section {
             background: rgba(255, 255, 255, 0.95);
@@ -87,6 +92,14 @@
             color: #3498db;
             font-weight: 600;
         }
+
+        .location-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 2;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -123,11 +136,12 @@
     <main class="container py-5">
         <div class="row justify-content-center">
             <div class="col-lg-8">
-                <form id="travel-form" class="form-section p-5">
+                <form id="travel-form" class="form-section p-5" action="javascript:void(0);">
                     <!-- Trip Details Section -->
                     <section class="mb-5">
                         <h3 class="mb-4 text-primary"><i class="fas fa-map-marked-alt me-2"></i>Trip Details</h3>
                         <div class="row g-4">
+                            <!-- Destination Input -->
                             <div class="col-md-6">
                                 <div class="d-flex align-items-center mb-4">
                                     <div class="input-group-icon">
@@ -143,6 +157,27 @@
                                 </div>
                             </div>
 
+                            <!-- Start Location Input -->
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-4">
+                                    <div class="input-group-icon">
+                                        <i class="fas fa-location-dot text-primary fa-lg"></i>
+                                    </div>
+                                    <div class="w-100 position-relative">
+                                        <label for="start-location" class="form-label fw-medium mb-1">Starting Location</label>
+                                        <input type="text" id="start-location" name="start_location" 
+                                               class="form-control form-control-lg" 
+                                               placeholder="Your current location" required>
+                                        <button type="button" class="btn btn-sm btn-outline-primary location-btn" 
+                                                onclick="getCurrentLocation()">
+                                            <i class="fas fa-location-crosshairs"></i>
+                                        </button>
+                                        <small class="text-muted">We'll calculate travel times from here</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Travel Date -->
                             <div class="col-md-6">
                                 <div class="d-flex align-items-center mb-4">
                                     <div class="input-group-icon">
@@ -157,6 +192,7 @@
                                 </div>
                             </div>
 
+                            <!-- Trip Duration -->
                             <div class="col-md-6">
                                 <div class="d-flex align-items-center mb-4">
                                     <div class="input-group-icon">
@@ -178,6 +214,7 @@
                     <section class="mb-5">
                         <h3 class="mb-4 text-primary"><i class="fas fa-sliders-h me-2"></i>Preferences</h3>
                         <div class="row g-4">
+                            <!-- Budget Level -->
                             <div class="col-md-6">
                                 <div class="d-flex align-items-center mb-4">
                                     <div class="input-group-icon">
@@ -196,6 +233,7 @@
                                 </div>
                             </div>
 
+                            <!-- Travel Group -->
                             <div class="col-md-6">
                                 <div class="d-flex align-items-center mb-4">
                                     <div class="input-group-icon">
@@ -217,6 +255,7 @@
                             </div>
                         </div>
 
+                        <!-- Preferred Activities -->
                         <div class="mt-4">
                             <label class="form-label fw-medium d-block mb-3">
                                 <i class="fas fa-running me-2"></i>Preferred Activities
@@ -267,6 +306,8 @@
                     </section>
 
                     <!-- Form Actions -->
+                  
+
                     <div class="d-grid gap-3 mt-5">
                         <button type="submit" class="btn btn-primary-gradient btn-lg py-3 fw-bold">
                             <i class="fas fa-magic me-2"></i>Generate Smart Itinerary
@@ -289,9 +330,11 @@
         </div>
     </main>
 
+    <!-- Error Messages -->
     <div id="activity-error" class="alert alert-danger d-none mt-3">
         Please select at least one activity
     </div>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay">
         <div class="text-center">
@@ -323,107 +366,201 @@
             <p class="text-center text-muted mb-0">&copy; 2024 AI Travel Planner. All rights reserved.</p>
         </div>
     </footer>
+
+
     <script>
+        // Global Constants
+        const GOOGLE_API_KEY = "{{ google_api_key }}";
+        const API_BASE_URL = "http://localhost:5000";
+        
+        // DOM Elements
         const form = document.getElementById("travel-form");
         const loadingOverlay = document.querySelector(".loading-overlay");
         const showResultBtn = document.getElementById("show-result-btn");
-    
-        // Initialize showResultBtn as hidden
+        const activityError = document.getElementById("activity-error");
+        const loadingSpinner = document.querySelector(".loading-spinner");
+
+        // Initialize UI
         showResultBtn.style.display = 'none';
-    
+        loadingSpinner.style.display = 'none';
+
         // Activity Card Selection
         document.querySelectorAll('.activity-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const checkbox = card.querySelector('input[type="checkbox"]');
+            card.addEventListener('click', function() {
+                const checkbox = this.querySelector('input[type="checkbox"]');
                 checkbox.checked = !checkbox.checked;
-                card.classList.toggle('selected', checkbox.checked);
+                this.classList.toggle('selected', checkbox.checked);
             });
         });
-    
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            
-            // Reset previous errors
-            document.querySelectorAll('.is-invalid').forEach(el => el.classList.remove('is-invalid'));
-            document.getElementById('activity-error').classList.add('d-none');
-    
-            // Validate form fields
+
+        // Geolocation Handler
+        async function getCurrentLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject('Geolocation not supported');
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    async position => {
+                        try {
+                            const { latitude, longitude } = position.coords;
+                            const response = await fetch(
+                                `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}`
+                            );
+                            const data = await response.json();
+                            if (data.results[0]) {
+                                document.getElementById('start-location').value = data.results[0].formatted_address;
+                                resolve();
+                            }
+                        } catch (error) {
+                            reject(error);
+                        }
+                    },
+                    error => {
+                        reject(error.message || 'Unable to get location');
+                    }
+                );
+            }).catch(error => {
+                console.error('Location Error:', error);
+                alert(`Location Error: ${error}. Please enter manually.`);
+            });
+        }
+
+        // Form Validation
+        function validateForm() {
             let isValid = true;
-            const requiredFields = {
-                '#destination': 'Destination is required',
-                '#travel-date': 'Travel date is required',
-                '#travel-days': 'Travel duration is required',
-                '#budget': 'Budget level is required',
-                '#companions': 'Travel group is required'
-            };
-    
+            const requiredFields = [
+                '#destination', '#start-location', 
+                '#travel-date', '#travel-days',
+                '#budget', '#companions'
+            ];
+
+            // Clear previous errors
+            document.querySelectorAll('.is-invalid').forEach(el => {
+                el.classList.remove('is-invalid');
+            });
+            activityError.classList.add('d-none');
+
             // Check required fields
-            Object.entries(requiredFields).forEach(([selector, message]) => {
+            requiredFields.forEach(selector => {
                 const field = document.querySelector(selector);
                 if (!field.value.trim()) {
                     field.classList.add('is-invalid');
-                    showError(message);
                     isValid = false;
                 }
             });
-    
-            // Check activities
-            const activities = document.querySelectorAll("input[name='activities']:checked");
-            if (activities.length === 0) {
-                document.getElementById('activity-error').classList.remove('d-none');
+
+            // Validate travel days
+            const travelDays = document.getElementById('travel-days');
+            if (isNaN(parseInt(travelDays.value))) {
+                travelDays.classList.add('is-invalid');
                 isValid = false;
             }
+
+            // Check activities
+            if (document.querySelectorAll("input[name='activities']:checked").length === 0) {
+                activityError.classList.remove('d-none');
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
+        // Form Submission
+        async function handleSubmit(e) {
+    e.preventDefault();
     
-            if (!isValid) return;
-    
-            loadingOverlay.style.display = 'flex';
-            showResultBtn.style.display = 'none'; // Ensure button stays hidden until success
-            
-            try {
-                const formData = new FormData(form);
-                const requestData = Object.fromEntries(formData.entries());
-                requestData.activities = Array.from(activities).map(cb => cb.value);
-    
-                const response = await fetch("http://127.0.0.1:5000/generate-itinerary", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(requestData)
-                });
-    
+    if (!validateForm()) return;
+
+    try {
+        // Show loading states
+        loadingOverlay.style.display = 'flex';
+        loadingSpinner.style.display = 'block';
+        showResultBtn.style.display = 'none';
+
+        // Collect form data properly
+        const requestData = {
+            destination: document.getElementById('destination').value,
+            start_location: document.getElementById('start-location').value,
+            travel_date: document.getElementById('travel-date').value,
+            travel_days: parseInt(document.getElementById('travel-days').value),
+            budget: document.getElementById('budget').value,
+            companions: document.getElementById('companions').value,
+            activities: Array.from(
+                document.querySelectorAll("input[name='activities']:checked")
+            ).map(cb => cb.value)
+        };
+
+        // Submit to backend
+        const response = await fetch(`${API_BASE_URL}/generate`, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify(requestData)
+        }).catch(error => {
+            throw new Error(`Network error: ${error.message}`);
+        });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Request failed with status ' + response.status);
+                }
+
                 const result = await response.json();
                 
-                if (!response.ok || !result.itinerary_id) {
-                    throw new Error(result.message || 'Failed to generate itinerary');
+                if (!result?.itinerary_id) {
+                    throw new Error('Invalid itinerary data received');
                 }
-    
+
+                // Store and redirect
                 localStorage.setItem('itineraryData', JSON.stringify(result));
-                showResultBtn.style.display = 'block';
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-    
+                window.location.href = `${API_BASE_URL}/itinerary/${result.itinerary_id}`;
+
             } catch (error) {
-                showError(error.message);
+                console.error('Submission Error:', error);
+                showError(error.message || 'An unexpected error occurred');
             } finally {
                 loadingOverlay.style.display = 'none';
+                loadingSpinner.style.display = 'none';
             }
-        });
-    
+        }
+
+        // Helper Functions
         function showError(message) {
-            const alert = document.createElement('div');
-            alert.className = 'alert alert-danger alert-dismissible fade show mt-3';
-            alert.innerHTML = `
-                ${message}
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-danger alert-dismissible fade show mt-3';
+            alertDiv.innerHTML = `
+                <strong>Error!</strong> ${message}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             `;
-            form.prepend(alert);
-        }
-    
-        showResultBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            if (!localStorage.getItem('itineraryData')) {
-                showError('Please generate an itinerary first');
-                return;
+            
+            const existingAlert = form.querySelector('.alert');
+            if (existingAlert) {
+                existingAlert.replaceWith(alertDiv);
+            } else {
+                form.prepend(alertDiv);
             }
-            window.location.href = `results.html?itinerary_id=${JSON.parse(localStorage.getItem('itineraryData')).itinerary_id}`;
+        }
+
+        // Event Listeners
+        form.addEventListener("submit", handleSubmit);
+        document.querySelector('.location-btn').addEventListener('click', getCurrentLocation);
+        showResultBtn.addEventListener("click", () => {
+            const itineraryData = localStorage.getItem('itineraryData');
+            if (itineraryData) {
+                try {
+                    const data = JSON.parse(itineraryData);
+                    if (data.itinerary_id) {
+                        window.location.href = `${API_BASE_URL}/itinerary/${data.itinerary_id}`;
+                        return;
+                    }
+                } catch (e) {
+                    console.error('Parse Error:', e);
+                }
+            }
+            showError('No valid itinerary found. Please generate one first.');
         });
     </script>
 </body>

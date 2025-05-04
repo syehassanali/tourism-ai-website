@@ -1,415 +1,569 @@
-from flask import Flask, request, jsonify
+import logging
+from logging.config import dictConfig
+
+# Configure logging FIRST - THIS IS CRUCIAL
+dictConfig({
+    'version': 1,
+    'formatters': {
+        'simple': {
+            'format': '[%(levelname)s] %(message)s'
+        }
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+            'level': 'WARNING'  # Only show warnings and above
+        }
+    },
+    'root': {
+        'level': 'WARNING',
+        'handlers': ['console']
+    }
+})
+
+from flask import Flask, request, jsonify, render_template
 from flask_pymongo import PyMongo
+import pymongo
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 import requests
 import os
-import datetime
+from datetime import datetime, timezone, timedelta
 import openai
-from flask import render_template
 from bson.objectid import ObjectId
-from dotenv import load_dotenv  # Add this import
+from dotenv import load_dotenv
+import random
+import logging
+import traceback
+from flask_wtf.csrf import CSRFProtect
+from bson import Decimal128
 
-# Load environment variables first
+
+# Silence specific noisy loggers
+loggers = [
+    'pymongo', 'urllib3', 'werkzeug', 
+    'googleapiclient', 'flask_pymongo'
+]
+for logger_name in loggers:
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.CRITICAL)
+    logger.propagate = False
+
 load_dotenv()
 
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
-CORS(app)
+app = Flask(__name__, template_folder='../templates', static_folder='static')
 
-# Updated MongoDB Configuration
-app.config["MONGO_URI"] = os.getenv("MONGO_URI")
-mongo = PyMongo(app)
+CORS(app, 
+    resources={
+        r"/generate": {
+            "origins": ["http://127.0.0.1:5500", "http://localhost:5500"],
+            "allow_headers": ["Content-Type", "X-CSRFToken"],
+            "methods": ["POST", "OPTIONS"],
+            "supports_credentials": True
+        }
+    }
+)
+
+app.config.update({
+    'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', 'default-secret-key'),
+    'WTF_CSRF_TIME_LIMIT': 3600,
+    'MONGO_URI': os.getenv("MONGO_URI"),
+    'DEBUG': False  # Force-disable Flask debug mode
+})
+
+csrf = CSRFProtect(app)
+
+# Configure PyMongo with production settings
+mongo = PyMongo(app, 
+    connectTimeoutMS=30000,
+    socketTimeoutMS=30000,
+    serverSelectionTimeoutMS=30000,
+    tls=True,
+    tlsAllowInvalidCertificates=True,
+    connect=False  # Defer connection until first use
+)
 users_collection = mongo.db.users
-itinerary_collection = mongo.db['itineraries']
+itinerary_collection = mongo.db.itineraries
 
-# Get API keys from environment
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# API Keys Configuration
+API_KEYS = {
+    "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY"),
+    "OPENWEATHER_API_KEY": os.getenv("OPENWEATHER_API_KEY"),
+    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
+    "UNSPLASH_API_KEY": os.getenv("UNSPLASH_API_KEY")
+}
+openai.api_key = API_KEYS["OPENAI_API_KEY"]
+
+def check_mongo_connection():
+    try:
+        # Force connection initialization
+        mongo.cx.server_info()
+        logging.getLogger(__name__).info("MongoDB connection established")
+    except Exception as e:
+        logging.getLogger(__name__).critical(f"MongoDB connection failed: {str(e)}")
+        raise
+
+def create_indexes():
+    itinerary_collection.create_index([("destination", pymongo.TEXT)])
+    users_collection.create_index([("email", pymongo.ASCENDING)], unique=True)
+
+check_mongo_connection()
+create_indexes()
+
+def convert_bson_types(obj):
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, Decimal128):
+        return float(obj.to_decimal())
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, list):
+        return [convert_bson_types(v) for v in obj]
+    if isinstance(obj, dict):
+        return {k: convert_bson_types(v) for k, v in obj.items()}
+    return obj
+
+def get_city_info(destination):
+    try:
+        wiki_params = {
+            'action': 'query', 
+            'format': 'json', 
+            'titles': destination,
+            'prop': 'extracts', 
+            'exintro': True, 
+            'explaintext': True
+        }
+        wiki_response = requests.get(
+            'https://en.wikipedia.org/w/api.php', 
+            params=wiki_params,
+            timeout=10
+        )
+        wiki_response.raise_for_status()
+        
+        page = next(iter(wiki_response.json().get('query', {}).get('pages', {}).values()))
+        description = page.get('extract', 'No description available')
+
+        headers = {"Authorization": f"Client-ID {API_KEYS['UNSPLASH_API_KEY']}"}
+        unsplash_response = requests.get(
+            f'https://api.unsplash.com/search/photos?query={destination}&per_page=3',
+            headers=headers,
+            timeout=10
+        )
+        unsplash_response.raise_for_status()
+        
+        images = [img['urls']['regular'] for img in unsplash_response.json().get('results', [])]
+
+        return {'description': description, 'images': images}
+    except Exception as e:
+        logging.error(f"City info error: {str(e)}")
+        return {'description': 'Information unavailable', 'images': []}
+
+def optimize_routes(places, start_location):
+    try:
+        if not places or not start_location:
+            return places
+
+        geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={start_location}&key={API_KEYS['GOOGLE_API_KEY']}"
+        geo_response = requests.get(geocode_url, timeout=10)
+        geo_response.raise_for_status()
+        geo_data = geo_response.json()
+        
+        if not geo_data.get('results'):
+            return places
+            
+        start_lat_lng = geo_data['results'][0]['geometry']['location']
+
+        places_with_coords = []
+        for place in places:
+            try:
+                geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={place['address']}&key={API_KEYS['GOOGLE_API_KEY']}"
+                geo_response = requests.get(geocode_url, timeout=10)
+                geo_response.raise_for_status()
+                geo_data = geo_response.json()
+                
+                if geo_data.get('results'):
+                    location = geo_data['results'][0]['geometry']['location']
+                    places_with_coords.append({
+                        **place,
+                        'lat': location['lat'],
+                        'lng': location['lng']
+                    })
+            except Exception as e:
+                logging.error(f"Geocoding error: {str(e)}")
+                continue
+
+        if not places_with_coords:
+            return places
+
+        directions_url = "https://maps.googleapis.com/maps/api/directions/json"
+        params = {
+            'origin': f"{start_lat_lng['lat']},{start_lat_lng['lng']}",
+            'destination': f"{start_lat_lng['lat']},{start_lat_lng['lng']}",
+            'waypoints': 'optimize:true|' + '|'.join([f"{p['lat']},{p['lng']}" for p in places_with_coords]),
+            'key': API_KEYS['GOOGLE_API_KEY'],
+            'mode': 'driving'
+        }
+        
+        response = requests.get(directions_url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get('status') == 'OK' and data.get('routes'):
+            optimized_order = data['routes'][0]['waypoint_order']
+            optimized_places = [places_with_coords[i] for i in optimized_order]
+            
+            legs = data['routes'][0]['legs']
+            for i in range(len(optimized_places)):
+                if i < len(legs):
+                    optimized_places[i]['travel_time'] = legs[i]['duration']['text']
+                    optimized_places[i]['travel_distance'] = legs[i]['distance']['text']
+            
+            return optimized_places
+        return places_with_coords
+    except Exception as e:
+        logging.error(f"Routing error: {str(e)}")
+        return places
+
+def create_time_based_itinerary(places, travel_days):
+    try:
+        itinerary = {}
+        max_activities_per_day = 5
+        
+        for day in range(1, travel_days + 1):
+            day_plan = {
+                "Morning (9AM-12PM)": [],
+                "Afternoon (12PM-5PM)": [],
+                "Evening (5PM-9PM)": []
+            }
+            current_time = datetime.strptime("09:00", "%H:%M")
+            activities_added = 0
+            
+            for place in places:
+                if activities_added >= max_activities_per_day:
+                    break
+                
+                if not all(key in place for key in ['name', 'address', 'lat', 'lng']):
+                    continue
+                
+                try:
+                    activity_duration = timedelta(hours=2)
+                    end_time = current_time + activity_duration
+                    
+                    if current_time.hour < 12:
+                        slot = "Morning (9AM-12PM)"
+                    elif current_time.hour < 17:
+                        slot = "Afternoon (12PM-5PM)"
+                    else:
+                        slot = "Evening (5PM-9PM)"
+                    
+                    day_plan[slot].append({
+                        "name": place['name'],
+                        "address": place.get('address', 'Address not available'),
+                        "start_time": current_time.strftime("%H:%M"),
+                        "end_time": end_time.strftime("%H:%M"),
+                        "travel_time": place.get('travel_time', '15 mins'),
+                        "coordinates": {
+                            "lat": place.get('lat', 0),
+                            "lng": place.get('lng', 0)
+                        }
+                    })
+                    
+                    travel_minutes = int(str(place.get('travel_time', '15 mins')).split()[0])
+                    current_time = end_time + timedelta(minutes=travel_minutes)
+                    activities_added += 1
+                except Exception as e:
+                    logging.error(f"Activity processing error: {str(e)}")
+                    continue
+            
+            itinerary[f"Day {day}"] = day_plan
+        
+        return itinerary
+    except Exception as e:
+        logging.error(f"Itinerary creation failed: {str(e)}")
+        return {f"Day {i+1}": {"Morning": [], "Afternoon": [], "Evening": []} for i in range(travel_days)}
+
+def fetch_places(query, max_results=5):
+    try:
+        places_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+        params = {
+            'query': f"{query}",
+            'key': API_KEYS['GOOGLE_API_KEY'],
+            'language': 'en',
+            'region': 'PK'
+        }
+        response = requests.get(places_url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('status') != 'OK':
+            return []
+
+        results = data.get('results', [])[:max_results]
+        
+        return [{
+            'name': p['name'],
+            'address': p.get('formatted_address', 'Address not available'),
+            'rating': p.get('rating', 3.0),
+            'price_level': p.get('price_level', random.randint(1, 4))
+        } for p in results]
+    except Exception as e:
+        logging.error(f"Places API error: {str(e)}")
+        return []
+
+def fetch_weather(destination, days):
+    try:
+        weather_url = "https://api.openweathermap.org/data/2.5/forecast"
+        params = {
+            'q': destination,
+            'appid': API_KEYS['OPENWEATHER_API_KEY'],
+            'units': 'metric'
+        }
+        response = requests.get(weather_url, params=params, timeout=10)
+        response.raise_for_status()
+        forecasts = response.json().get('list', [])
+        
+        weather_data = []
+        for i in range(days):
+            target_date = datetime.now(timezone.utc) + timedelta(days=i)
+            day_forecast = [
+                f for f in forecasts 
+                if datetime.fromtimestamp(f['dt'], tz=timezone.utc).date() == target_date.date()
+            ]
+            
+            if day_forecast:
+                try:
+                    avg_temp = sum(f['main']['temp'] for f in day_forecast) / len(day_forecast)
+                except ZeroDivisionError:
+                    avg_temp = 0
+                
+                weather_data.append({
+                    'date': target_date.strftime('%Y-%m-%d'),
+                    'temp': round(avg_temp, 1),
+                    'description': day_forecast[0]['weather'][0]['description'],
+                    'icon': day_forecast[0]['weather'][0].get('icon', '02d')
+                })
+        return weather_data
+    except Exception as e:
+        logging.error(f"Weather API error: {str(e)}")
+        return []
 
 @app.route('/')
 def home():
-    return "Welcome to the Tourism AI Website!"
+    return render_template('forum.html', google_api_key=API_KEYS["GOOGLE_API_KEY"])
 
-
-def fetch_gpt_suggestions(destination, preferences):
-    """
-    Use OpenAI GPT to suggest activities based on user preferences.
-    """
+@app.route('/generate', methods=['POST', 'OPTIONS'])
+@csrf.exempt
+@cross_origin(origins=["http://127.0.0.1:5500", "http://localhost:5500"],
+              allow_headers=["Content-Type", "X-CSRFToken"],
+              methods=["POST", "OPTIONS"],
+              supports_credentials=True)
+def generate_itinerary():
     try:
-        prompt = (
-            f"I am planning a trip to {destination}. "
-            f"My preferences include: {', '.join(preferences)}. "
-            "Suggest some unique and enjoyable activities for me."
-        )
-        response = openai.Completion.create(
-            engine="gpt-4o-mini",
-            prompt=prompt,
-            max_tokens=100,
-            temperature=0.7,
-        )
-        suggestions = response.choices[0].text.strip().split("\n")
-        return [s.strip("- ") for s in suggestions if s]  # Clean and format output
-    except Exception as e:
-        print(f"Error fetching GPT suggestions: {str(e)}")
-        return ["Visit local markets", "Explore historical landmarks"]  # Fallback suggestions
+        app.logger.info("Received request headers: %s", request.headers)
+        app.logger.info("Received request data: %s", request.get_data())
+        data = request.get_json()
 
-
-def optimize_routes(places):
-    """
-    Optimize routes between places using Google Directions API.
-    """
-    if len(places) < 2:
-        return places  # No optimization needed if fewer than 2 places
-
-    try:
-        base_url = "https://maps.googleapis.com/maps/api/directions/json"
-        waypoints = "|".join([place["address"] for place in places[1:-1]])  # All except start and end
-        params = {
-            "origin": places[0]["address"],
-            "destination": places[-1]["address"],
-            "waypoints": waypoints,
-            "key": GOOGLE_API_KEY,
+        required_fields = {
+            'destination': str,
+            'travel_days': int,
+            'start_location': str,
+            'activities': list,
+            'travel_date': str,
+            'budget': str,
+            'companions': str
         }
 
-        response = requests.get(base_url, params=params)
-        print("Request URL for route optimization:", response.url)  # Debugging log
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "OK":
-                optimized_order = data["routes"][0]["waypoint_order"]
-                optimized_places = [places[0]] + [places[i + 1] for i in optimized_order] + [places[-1]]
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return jsonify({
+                "error": "Missing required fields",
+                "missing": missing_fields
+            }), 400
 
-                # Add travel info to each place
-                for i, leg in enumerate(data["routes"][0]["legs"]):
-                    places[i]["travel_time"] = leg["duration"]["text"]
-                    places[i]["travel_distance"] = leg["distance"]["text"]
-
-                return optimized_places
-            else:
-                print("Google Directions API Error:", data.get("status"))
-        else:
-            print("HTTP Error:", response.status_code, response.text)
-    except Exception as e:
-        print("Error optimizing routes:", str(e))
-    return places  # Return unoptimized places if API fails
-
-
-# Simulated pricing data for budget filtering
-def simulate_price():
-    """Simulate pricing data for places."""
-    import random
-    return random.randint(20, 250)  # Simulated price in USD
-
-def create_limited_itinerary(places, travel_days, max_per_day=3):
-    """Distribute places into daily itineraries, with a maximum limit per day."""
-    itinerary = {f"Day {i+1}": [] for i in range(travel_days)}
-
-    for i, place in enumerate(places):
-        day_index = i % travel_days  # Distribute across days
-        if len(itinerary[f"Day {day_index + 1}"]) < max_per_day:
-            itinerary[f"Day {day_index + 1}"].append(place)
-    
-    return itinerary
-
-@app.route('/generate-itinerary', methods=['POST'])
-def generate_itinerary():
-    data = request.json
-    destination = data.get('destination')
-    travel_days = int(data.get('travel_days', 0))  # Convert to integer
-    activities = data.get('activities', [])
-    preferences = data.get('preferences', [])
-    budget = data.get('budget', 'medium')
-
-    print("Received Data:", data)  # Debugging log
-
-    if not destination or not travel_days:
-        return jsonify({"error": "Destination and travel days are required"}), 400
-
-    try:
-        # Save form data to MongoDB
-        itinerary_id = mongo.db.itineraries.insert_one(data).inserted_id
-
-        all_places = []
-
-        # Fetch GPT suggestions
-        print("Fetching GPT activity suggestions...")
-        gpt_suggestions = fetch_gpt_suggestions(destination, preferences)
-        print("GPT Suggestions:", gpt_suggestions)
-
-        # Combine user-provided activities with GPT suggestions
-        combined_activities = list(set(activities + gpt_suggestions))  # Remove duplicates
-
-        # Simulated pricing data for budget filtering
-        budget_levels = {'low': 50, 'medium': 100, 'high': 200}
-
-        # Fetch places for each activity
-        for activity in combined_activities:
-            print(f"Fetching places for activity: {activity}")
-            places = fetch_places(f"{activity} in {destination}", max_results=10)
-
-            # Simulate pricing and filter by budget
-            for place in places:
-                place['price'] = simulate_price()  # Add simulated price
-                if place['price'] <= budget_levels[budget]:
-                    all_places.append(place)
-
-        # Distribute places into daily itinerary with a max of 3 per day
-        itinerary = create_limited_itinerary(all_places, travel_days, max_per_day=3)
-
-        # Optimize routes for each day's itinerary
-        for day, places in itinerary.items():
-            print(f"Optimizing routes for {day}...")
-            itinerary[day] = optimize_routes(places)
-
-        # Fetch weather data
-        print("Fetching weather data...")
-        weather = fetch_weather(destination, travel_days)
-
-        print("Generated Itinerary:", itinerary)
-        print("Weather Forecast:", weather)
-        
-        # Save the generated itinerary back to MongoDB
-        mongo.db.itineraries.update_one(
-            {'_id': itinerary_id}, {"$set": {"itinerary": itinerary, "weather": weather}}
-        )
-        return jsonify({
-            "message": "Itinerary generated successfully",
-            "itinerary_id": str(itinerary_id),
-            "itinerary": itinerary,
-            "weather": weather
-        }), 200
-    except Exception as e:
-        print("Error in itinerary generation:", str(e))
-        return jsonify({"error": str(e)}), 500
-
-
-
-#For testing
-@app.route('/test-gpt-suggestions', methods=['POST'])
-def test_gpt_suggestions():
-    data = request.json
-    destination = data.get('destination')
-    preferences = data.get('preferences', [])
-
-    if not destination:
-        return jsonify({"error": "Destination is required"}), 400
-
-    try:
-        suggestions = fetch_gpt_suggestions(destination, preferences)
-        return jsonify({
-            "message": "GPT suggestions fetched successfully",
-            "suggestions": suggestions
-        }), 200
-
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-def fetch_places(query, location=None, radius=1000, max_results=5):
-    """
-    Fetch places from the Google Places API and limit the number of results.
-    """
-    base_url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-    params = {
-        "query": query,
-        "key": GOOGLE_API_KEY,
-    }
-    if location:
-        params["location"] = location
-    if radius:
-        params["radius"] = radius
-
-    try:
-        response = requests.get(base_url, params=params)
-        print("Request URL:", response.url)  # Debugging log
-        if response.status_code == 200:
-            data = response.json()
-            print("API Response:", data)  # Debugging log
-            results = data.get("results", [])
-            # Limit results to the maximum specified
-            return [
-                {
-                    "name": place.get("name"),
-                    "address": place.get("formatted_address"),
-                    "rating": place.get("rating"),
-                    "user_ratings_total": place.get("user_ratings_total")
-                }
-                for place in results[:max_results]
-            ]
-        else:
-            print("HTTP Error:", response.status_code, response.text)
-            response.raise_for_status()
-    except Exception as e:
-        print(f"Error fetching places for query '{query}': {str(e)}")
-        return []
-
-
-def create_itinerary(places, travel_days):
-    """Split places into daily itineraries."""
-    itinerary = {}
-    total_places = len(places)
-    places_per_day = max(1, total_places // travel_days)  # Ensure at least 1 place per day
-
-    for day in range(1, travel_days + 1):
-        start_index = (day - 1) * places_per_day
-        end_index = start_index + places_per_day
-        itinerary[f"Day {day}"] = places[start_index:end_index]
-
-    # Add remaining places to the last day, if any
-    if total_places % travel_days != 0:
-        itinerary[f"Day {travel_days}"].extend(places[end_index:])
-
-    return itinerary
-
-
-def fetch_weather(destination, travel_days):
-    """Fetch weather forecast for the destination."""
-    weather_url = "https://api.openweathermap.org/data/2.5/forecast"
-    params = {
-        "q": destination,  # Specify the city name
-        "appid": OPENWEATHER_API_KEY,  # Your API key
-        "units": "metric"  # Metric units for temperature
-    }
-
-    try:
-        response = requests.get(weather_url, params=params)
-        response_data = response.json()
-        print("Weather API Response:", response_data)  # Debugging log
-
-        # Check for API errors
-        if response_data.get("cod") != "200":
-            raise Exception(f"Error fetching weather: {response_data.get('message', 'Unknown error')}")
-
-        # Extract relevant weather information
-        forecasts = response_data.get("list", [])
-        weather_forecasts = []
-        start_date = datetime.datetime.now()
-
-        for day in range(travel_days):
-            target_date = (start_date + datetime.timedelta(days=day)).strftime("%Y-%m-%d")
-            daily_forecast = [
-                forecast for forecast in forecasts
-                if forecast["dt_txt"].startswith(target_date)
-            ]
-
-            if daily_forecast:
-                avg_temp = sum(item["main"]["temp"] for item in daily_forecast) / len(daily_forecast)
-                weather_forecasts.append({
-                    "date": target_date,
-                    "avg_temp": round(avg_temp, 1),
-                    "description": daily_forecast[0]["weather"][0]["description"]
+        type_errors = []
+        for field, expected_type in required_fields.items():
+            if not isinstance(data[field], expected_type):
+                type_errors.append({
+                    "field": field,
+                    "expected": expected_type.__name__,
+                    "actual": type(data[field]).__name__
                 })
+        
+        if type_errors:
+            return jsonify({
+                "error": "Invalid data types",
+                "details": type_errors
+            }), 400
 
-        return weather_forecasts
+        try:
+            travel_days = int(data['travel_days'])
+            if travel_days < 1 or travel_days > 14:
+                return jsonify({"error": "Travel days must be between 1-14"}), 400
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid travel days format"}), 400
+
+        valid_activities = {'city', 'beaches', 'hiking', 'food'}
+        submitted_activities = [a for a in data['activities'] if a in valid_activities]
+        if not submitted_activities:
+            return jsonify({"error": "No valid activities selected"}), 400
+
+        city_info = get_city_info(data['destination'])
+        if not city_info:
+            city_info = {'description': 'No description available', 'images': []}
+
+        places = []
+        for activity in submitted_activities:
+            activity_places = fetch_places(f"{activity} in {data['destination']}")
+            if activity_places:
+                places.extend(activity_places)
+
+        if not places:
+            return jsonify({"error": "No places found for selected activities"}), 404
+
+        optimized_places = optimize_routes(places, data['start_location']) or places
+        itinerary = create_time_based_itinerary(optimized_places, travel_days)
+        weather = fetch_weather(data['destination'], travel_days)
+
+        itinerary_data = {
+            'destination': data['destination'],
+            'start_location': data['start_location'],
+            'travel_days': travel_days,
+            'travel_date': data['travel_date'],
+            'budget': data['budget'],
+            'companions': data['companions'],
+            'activities': submitted_activities,
+            'city_info': city_info,
+            'itinerary': itinerary,
+            'weather': weather,
+            'optimized_places': optimized_places,
+            'created_at': datetime.now(timezone.utc)
+        }
+
+        result = itinerary_collection.insert_one(itinerary_data)
+        itinerary_id = str(result.inserted_id)
+
+        return jsonify({
+            'itinerary_id': itinerary_id,
+            'city_info': city_info,
+            'itinerary': itinerary,
+            'weather': weather,
+            'map_data': {
+                'start_location': data['start_location'],
+                'places': optimized_places
+            }
+        }), 200
 
     except Exception as e:
-        print("Error in fetch_weather:", str(e))
-        raise Exception(f"Error fetching weather: {str(e)}")
+        app.logger.error(f"Unexpected error: {traceback.format_exc()}")
+        return jsonify({
+            "error": "Internal server error",
+            "message": str(e)
+        }), 500
 
-@app.route('/result/<itinerary_id>', methods=['GET'])
-def get_itinerary_result(itinerary_id):
+
+@app.route('/itinerary/<itinerary_id>')
+def view_itinerary(itinerary_id):
     try:
-        # Find the itinerary document in MongoDB
-        itinerary = itinerary_collection.find_one({"_id": ObjectId(itinerary_id)})
+        if not ObjectId.is_valid(itinerary_id):
+            return render_template('error.html', error="Invalid itinerary ID"), 400
+            
+        obj_id = ObjectId(itinerary_id)
+        itinerary = itinerary_collection.find_one({"_id": obj_id})
         
         if not itinerary:
-            return jsonify({"error": "Itinerary not found"}), 404
+            return render_template('error.html', error="Itinerary not found"), 404
+            
+        itinerary = convert_bson_types(itinerary)
         
-        # Transform itinerary data
-        raw_itinerary = itinerary.get('itinerary', {})
-        formatted_itinerary = [
-            {"day": day, "activities": activities}
-            for day, activities in raw_itinerary.items()
-        ]
-        
-        # Prepare the response data
-        response_data = {
-            "destination": itinerary.get('destination'),
-            "travel_date": itinerary.get('travel_date'),
-            "travel_days": itinerary.get('travel_days'),
-            "budget": itinerary.get('budget'),
-            "companions": itinerary.get('companions'),
-            "activities": itinerary.get('activities', []),
-            "itinerary": formatted_itinerary,  # Send the transformed itinerary
-            "weather": itinerary.get('weather', [])
-        }
-        
-        print("Response Data:", response_data)  # Debugging log
-        return jsonify(response_data), 200
+        required_fields = ['destination', 'start_location', 'itinerary']
+        for field in required_fields:
+            if field not in itinerary:
+                return render_template('error.html', error=f"Missing {field} in itinerary"), 400
+
+        return render_template('results.html', 
+                            itinerary=itinerary,
+                            google_api_key=API_KEYS['GOOGLE_API_KEY'],
+                            now=datetime.now(timezone.utc))
+                            
     except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        logging.error(f"Itinerary Error: {traceback.format_exc()}")
+        return render_template('error.html', error="Server error"), 500
 
-
-
-# Route: Sign Up
 @app.route('/signup', methods=['POST'])
 def signup():
     try:
         data = request.json
-        print("Signup data received:", data)  # Debug log
+        required_fields = ['name', 'email', 'password', 'confirm_password']
+        
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": "All fields required"}), 400
 
-        # Extract and validate input
-        name = data.get('name')
-        email = data.get('email')
-        password = data.get('password')
-        confirm_password = data.get('confirm_password')
+        if data['password'] != data['confirm_password']:
+            return jsonify({"error": "Passwords mismatch"}), 400
 
-        # Ensure all fields are provided
-        if not all([name, email, password, confirm_password]):
-            return jsonify({"error": "All fields are required"}), 400
+        if users_collection.find_one({"email": data['email']}):
+            return jsonify({"error": "Email exists"}), 409
 
-        # Check if passwords match
-        if password != confirm_password:
-            return jsonify({"error": "Passwords do not match"}), 400
-
-        # Check if the email already exists
-        if users_collection.find_one({"email": email}):
-            return jsonify({"error": "Email already registered"}), 400
-
-        # Hash the password and save the user
-        hashed_password = generate_password_hash(password)
-        users_collection.insert_one({
-            "name": name,
-            "email": email,
-            "password": hashed_password
-        })
-
-        return jsonify({"message": "User registered successfully"}), 201
+        user_data = {
+            "name": data['name'],
+            "email": data['email'],
+            "password": generate_password_hash(data['password']),
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        users_collection.insert_one(user_data)
+        return jsonify({"message": "User created"}), 201
 
     except Exception as e:
-        print("Error during signup:", str(e))
-        return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+        logging.error(f"Signup error: {str(e)}")
+        return jsonify({"error": "Registration failed"}), 500
 
-
-# Route: Login
 @app.route('/login', methods=['POST'])
 def login():
     try:
         data = request.json
-        print("Login data received:", data)  # Debug log
+        if not all(field in data for field in ['email', 'password']):
+            return jsonify({"error": "Email and password required"}), 400
 
-        # Extract input
-        email = data.get('email')
-        password = data.get('password')
+        user = users_collection.find_one({"email": data['email']})
+        if not user or not check_password_hash(user['password'], data['password']):
+            return jsonify({"error": "Invalid credentials"}), 401
 
-        # Fetch user by email
-        user = users_collection.find_one({"email": email})
-        if not user:
-            return jsonify({"error": "Invalid email or password"}), 401
-
-        # Verify the password
-        if not check_password_hash(user["password"], password):
-            return jsonify({"error": "Invalid email or password"}), 401
-
-        return jsonify({"message": "Login successful"}), 200
+        return jsonify({
+            "message": "Login successful",
+            "user": {
+                "name": user['name'],
+                "email": user['email']
+            }
+        }), 200
 
     except Exception as e:
-        print("Error during login:", str(e))
-        return jsonify({"error": "An unexpected error occurred. Please try again later."}), 500
+        logging.error(f"Login error: {str(e)}")
+        return jsonify({"error": "Authentication failed"}), 500
+
+@app.route('/test_db')
+def test_db():
+    try:
+        mongo.cx.admin.command('ping')
+        count = itinerary_collection.count_documents({})
+        return jsonify({
+            "status": "connected",
+            "itinerary_count": count
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.errorhandler(404)
+def not_found(error):
+    return render_template('error.html', error="Page not found"), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('error.html', error="Server error"), 500
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

@@ -5,3 +5,4 @@ requests
 openai
 flask-bcrypt
 werkzeug
+flask-wtf>=1.0.0
