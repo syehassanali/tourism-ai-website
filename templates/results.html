@@ -42,7 +42,7 @@
         }
 
         .city-carousel img {
-            height: 450px;
+            height: 1000px;
             object-fit: cover;
             width: 100%;
         }
@@ -109,6 +109,23 @@
             display: none;
         }
 
+        .ai-day-suggestions {
+            border-left: 3px solid #3498db;
+            margin-left: 2rem;
+            padding: 1.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-top: 2rem;
+        }
+
+        .ai-day-suggestions h5 {
+            font-size: 1.25rem;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
         @media print {
             .no-print {
                 display: none !important;
@@ -119,6 +136,11 @@
             .card {
                 border: none !important;
                 box-shadow: none !important;
+            }
+            .ai-day-suggestions {
+                border: none;
+                margin-left: 0;
+                padding: 0;
             }
         }
     </style>
@@ -189,53 +211,71 @@
                         <h3 class="mb-0"><i class="fas fa-route me-2 text-primary"></i>Daily Schedule</h3>
                     </div>
                     <div class="card-body">
-                       <!-- Replace the existing itinerary section with this -->
-{% if itinerary.itinerary %}
-{% for day_number, schedule in itinerary.itinerary.items() %}
-<div class="day-card mb-5">
-    <h4 class="mb-4 text-primary">{{ day_number }}</h4>
-    {% for time_slot, activities in schedule.items() %}
-    <div class="time-slot-card">
-        <h5 class="text-secondary mb-3">{{ time_slot }}</h5>
-        {% if activities %}
-            {% for activity in activities %}
-            <div class="card mb-3 border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h5 class="mb-1">{{ activity.name|default("Activity", true) }}</h5>
-                            {% if activity.address %}
-                            <p class="text-muted mb-2 small">{{ activity.address }}</p>
-                            {% endif %}
-                            <div class="activity-time">
-                                <i class="fas fa-clock me-1 text-primary"></i>
-                                {{ activity.start_time|default("09:00") }} - {{ activity.end_time|default("18:00") }}
-                                {% if activity.travel_time %}
-                                <span class="travel-duration ms-2">
-                                    <i class="fas fa-car me-1 text-primary"></i>{{ activity.travel_time }}
-                                </span>
-                                {% endif %}
+                        {% if itinerary.itinerary %}
+                            {% for day_number, schedule in itinerary.itinerary.items() %}
+                            <div class="day-card mb-5">
+                                <h4 class="mb-4 text-primary">{{ day_number }}</h4>
+                                
+                                {% for time_slot, activities in schedule.items() %}
+                                <div class="time-slot-card">
+                                    <h5 class="text-secondary mb-3">{{ time_slot }}</h5>
+                                    {% if activities %}
+                                        {% for activity in activities %}
+                                        <div class="card mb-3 border-0 shadow-sm">
+                                            <div class="card-body">
+                                                <div class="d-flex justify-content-between align-items-start">
+                                                    <div>
+                                                        <h5 class="mb-1">{{ activity.name|default("Activity", true) }}</h5>
+                                                        {% if activity.address %}
+                                                        <p class="text-muted mb-2 small">{{ activity.address }}</p>
+                                                        {% endif %}
+                                                        <div class="activity-time">
+                                                            <i class="fas fa-clock me-1 text-primary"></i>
+                                                            {{ activity.start_time|default("09:00") }} - {{ activity.end_time|default("18:00") }}
+                                                            {% if activity.travel_time %}
+                                                            <span class="travel-duration ms-2">
+                                                                <i class="fas fa-car me-1 text-primary"></i>{{ activity.travel_time }}
+                                                            </span>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                    {% if activity.rating %}
+                                                    <div class="badge bg-warning text-dark">
+                                                        <i class="fas fa-star"></i> {{ activity.rating|round(1) }}
+                                                    </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="alert alert-info">No activities planned</div>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+
+                                <!-- AI Suggestions for this day -->
+                                <div class="ai-day-suggestions">
+                                    <h5 class="text-primary mb-3">
+                                        <i class="fas fa-robot me-2"></i>AI Recommendations for {{ day_number }}
+                                    </h5>
+                                    {% if itinerary.ai_content %}
+                                        {% set day_index = loop.index %}
+                                        {% set day_split = itinerary.ai_content.split('Day ' ~ day_index ~ ':') %}
+                                        {% if day_split|length > 1 %}
+                                            {{ day_split[1].split('Day ' ~ (day_index+1))[0]|safe }}
+                                        {% else %}
+                                            {{ itinerary.ai_content|safe }}
+                                        {% endif %}
+                                    {% else %}
+                                        <div class="alert alert-info">No AI suggestions available</div>
+                                    {% endif %}
+                                </div>
                             </div>
-                        </div>
-                        {% if activity.rating %}
-                        <div class="badge bg-warning text-dark">
-                            <i class="fas fa-star"></i> {{ activity.rating|round(1) }}
-                        </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="alert alert-warning">No itinerary data available</div>
                         {% endif %}
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        {% else %}
-            <div class="alert alert-info">No activities planned for this time slot</div>
-        {% endif %}
-    </div>
-    {% endfor %}
-</div>
-{% endfor %}
-{% else %}
-<div class="alert alert-warning">No itinerary data available</div>
-{% endif %}
                     </div>
                 </div>
             </div>
@@ -337,8 +377,6 @@
             <p class="text-muted">Generated on {{ now.strftime('%Y-%m-%d %H:%M') }}</p>
         </div>
     </main>
-
-
 
     <!-- Footer -->
     <footer class="bg-dark text-white py-4 mt-5 no-print">

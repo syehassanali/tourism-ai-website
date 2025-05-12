@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign Up - AI Travel Planner</title>
-    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="static/css/custom-styles.css">
     <style>
@@ -71,8 +71,8 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary-gradient shadow-sm fixed-top">
         <div class="container">
-            <a class="navbar-brand d-flex align-items-center" href="index.html">
-                <img src="static/images/logo.png" alt="AI Travel Planner" height="40" class="me-2">
+            <a class="navbar-brand d-flex align-items-center" href="/">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="AI Travel Planner" height="40" class="me-2">
                 <span class="fw-bold">AI Travel Planner</span>
             </a>
         </div>
@@ -91,6 +91,7 @@
 
                 <!-- Auth Form -->
                 <form id="signup-form" class="p-4 p-md-5">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <!-- Name Input -->
                     <div class="mb-4">
                         <label class="form-label text-dark fw-medium mb-2">Full Name</label>
@@ -151,7 +152,7 @@
                     <!-- Login Link -->
                     <div class="text-center mt-5 pt-3">
                         <p class="text-muted mb-0">Already have an account? 
-                            <a href="login.html" class="text-primary fw-medium text-decoration-none">
+                            <a href="/login" class="text-primary fw-medium text-decoration-none">
                                 Login here
                             </a>
                         </p>
@@ -182,77 +183,54 @@
     <!-- Enhanced Signup Script -->
     <script>
         document.getElementById("signup-form").addEventListener("submit", async function (e) {
-            e.preventDefault();
-            const form = e.target;
-            const submitBtn = form.querySelector('button[type="submit"]');
-            
-            // Show loading state
-            submitBtn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Creating Account...';
-            submitBtn.disabled = true;
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    
+    submitBtn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Creating Account...';
+    submitBtn.disabled = true;
 
-            const name = document.getElementById("name").value.trim();
-            const email = document.getElementById("email").value.trim();
-            const password = document.getElementById("password").value.trim();
-            const confirmPassword = document.getElementById("confirm-password").value.trim();
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const confirmPassword = document.getElementById("confirm-password").value.trim();
 
-            // Client-side validation
-            if (password !== confirmPassword) {
-                showError("Passwords do not match");
-                submitBtn.innerHTML = '<i class="fas fa-user-plus me-2"></i>Create Account';
-                submitBtn.disabled = false;
-                return;
-            }
+    if (password !== confirmPassword) {
+        showError("Passwords do not match");
+        submitBtn.innerHTML = '<i class="fas fa-user-plus me-2"></i>Create Account';
+        submitBtn.disabled = false;
+        return;
+    }
 
-            try {
-                const response = await fetch("http://127.0.0.1:5000/signup", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        name,
-                        email,
-                        password,
-                        confirm_password: confirmPassword
-                    })
-                });
-
-                const result = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(result.error || 'Registration failed');
-                }
-
-                // Success handling
-                localStorage.setItem('authToken', result.token);
-                window.location.href = "index.html";
-
-            } catch (error) {
-                showError(error.message);
-            } finally {
-                submitBtn.innerHTML = '<i class="fas fa-user-plus me-2"></i>Create Account';
-                submitBtn.disabled = false;
-            }
+    try {
+        const response = await fetch('/signup', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: name,
+                email: email,
+                password: password,
+                confirm_password: confirmPassword
+            }),
+            credentials: 'include'
         });
 
-        function showError(message) {
-            // Remove existing errors
-            const existingError = document.querySelector('.alert-danger');
-            if (existingError) existingError.remove();
+        const result = await response.json();
 
-            // Create error element
-            const errorAlert = document.createElement('div');
-            errorAlert.className = 'alert alert-danger mt-4';
-            errorAlert.innerHTML = `
-                <i class="fas fa-exclamation-circle me-2"></i>
-                ${message}
-            `;
-            
-            // Insert after header
-            const form = document.getElementById('signup-form');
-            form.parentNode.insertBefore(errorAlert, form);
-
-            // Remove error after 5 seconds
-            setTimeout(() => errorAlert.remove(), 5000);
+        if (!response.ok) {
+            throw new Error(result.error || 'Registration failed');
         }
+
+        // Redirect to home page after successful signup
+        window.location.href = "/login";
+
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        submitBtn.innerHTML = '<i class="fas fa-user-plus me-2"></i>Create Account';
+        submitBtn.disabled = false;
+    }
+});
     </script>
 </body>
 </html>

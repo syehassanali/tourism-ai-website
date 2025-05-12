@@ -1,6 +1,8 @@
 import logging
 from logging.config import dictConfig
 
+from jinja2 import TemplateNotFound
+
 # Configure logging FIRST - THIS IS CRUCIAL
 dictConfig({
     'version': 1,
@@ -25,6 +27,7 @@ dictConfig({
 from flask import Flask, request, jsonify, render_template
 from flask_pymongo import PyMongo
 import pymongo
+from flask import session, redirect, url_for, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS, cross_origin
 import requests
@@ -38,7 +41,10 @@ import logging
 import traceback
 from flask_wtf.csrf import CSRFProtect
 from bson import Decimal128
-
+from openai import OpenAI
+import requests
+from flask import session
+from bson import ObjectId
 
 # Silence specific noisy loggers
 loggers = [
@@ -52,15 +58,15 @@ for logger_name in loggers:
 
 load_dotenv()
 
-app = Flask(__name__, template_folder='../templates', static_folder='static')
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 
 CORS(app, 
+    supports_credentials=True,
     resources={
-        r"/generate": {
-            "origins": ["http://127.0.0.1:5500", "http://localhost:5500"],
-            "allow_headers": ["Content-Type", "X-CSRFToken"],
-            "methods": ["POST", "OPTIONS"],
-            "supports_credentials": True
+        r"/*": {
+            "origins": ["http://localhost:5000"],  # Only allow same-origin
+            "allow_headers": ["Content-Type"],
+            "methods": ["GET", "POST"]
         }
     }
 )
@@ -69,7 +75,10 @@ app.config.update({
     'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', 'default-secret-key'),
     'WTF_CSRF_TIME_LIMIT': 3600,
     'MONGO_URI': os.getenv("MONGO_URI"),
-    'DEBUG': False  # Force-disable Flask debug mode
+    'DEBUG': False,  # Force-disable Flask debug mode
+    'SESSION_COOKIE_SAMESITE': 'Lax',
+    'SESSION_COOKIE_SECURE': False,
+    'SESSION_COOKIE_DOMAIN': None  # Explicitly set to None for localhost
 })
 
 csrf = CSRFProtect(app)
@@ -93,7 +102,7 @@ API_KEYS = {
     "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
     "UNSPLASH_API_KEY": os.getenv("UNSPLASH_API_KEY")
 }
-openai.api_key = API_KEYS["OPENAI_API_KEY"]
+client = OpenAI(api_key=API_KEYS["OPENAI_API_KEY"])
 
 def check_mongo_connection():
     try:
@@ -107,6 +116,8 @@ def check_mongo_connection():
 def create_indexes():
     itinerary_collection.create_index([("destination", pymongo.TEXT)])
     users_collection.create_index([("email", pymongo.ASCENDING)], unique=True)
+    # Add user_id index separately
+    itinerary_collection.create_index([("user_id", pymongo.ASCENDING)])
 
 check_mongo_connection()
 create_indexes()
@@ -228,7 +239,10 @@ def optimize_routes(places, start_location):
 def create_time_based_itinerary(places, travel_days):
     try:
         itinerary = {}
-        max_activities_per_day = 5
+        max_activities_per_day = min(len(places) // travel_days + 1, 5)
+        
+        day_chunks = [places[i:i + max_activities_per_day] 
+                     for i in range(0, len(places), max_activities_per_day)]
         
         for day in range(1, travel_days + 1):
             day_plan = {
@@ -237,9 +251,10 @@ def create_time_based_itinerary(places, travel_days):
                 "Evening (5PM-9PM)": []
             }
             current_time = datetime.strptime("09:00", "%H:%M")
-            activities_added = 0
+            activities_added = 0  # Reset for each day
+            daily_places = day_chunks[day-1] if (day-1) < len(day_chunks) else []
             
-            for place in places:
+            for place in daily_places:  # Use daily_places instead of full list
                 if activities_added >= max_activities_per_day:
                     break
                 
@@ -250,6 +265,7 @@ def create_time_based_itinerary(places, travel_days):
                     activity_duration = timedelta(hours=2)
                     end_time = current_time + activity_duration
                     
+                    # Determine time slot
                     if current_time.hour < 12:
                         slot = "Morning (9AM-12PM)"
                     elif current_time.hour < 17:
@@ -257,6 +273,7 @@ def create_time_based_itinerary(places, travel_days):
                     else:
                         slot = "Evening (5PM-9PM)"
                     
+                    # Add activity
                     day_plan[slot].append({
                         "name": place['name'],
                         "address": place.get('address', 'Address not available'),
@@ -269,7 +286,9 @@ def create_time_based_itinerary(places, travel_days):
                         }
                     })
                     
-                    travel_minutes = int(str(place.get('travel_time', '15 mins')).split()[0])
+                    # Update time
+                    travel_time_str = place.get('travel_time', '15 mins')
+                    travel_minutes = int(''.join(filter(str.isdigit, travel_time_str.split()[0])))
                     current_time = end_time + timedelta(minutes=travel_minutes)
                     activities_added += 1
                 except Exception as e:
@@ -278,7 +297,8 @@ def create_time_based_itinerary(places, travel_days):
             
             itinerary[f"Day {day}"] = day_plan
         
-        return itinerary
+        return itinerary  # Added missing return statement
+        
     except Exception as e:
         logging.error(f"Itinerary creation failed: {str(e)}")
         return {f"Day {i+1}": {"Morning": [], "Afternoon": [], "Evening": []} for i in range(travel_days)}
@@ -348,9 +368,196 @@ def fetch_weather(destination, days):
         logging.error(f"Weather API error: {str(e)}")
         return []
 
+def create_ai_prompt(itinerary_data):
+    try:
+        # Create detailed daily breakdown
+        daily_plans = []
+        for day, schedule in itinerary_data['itinerary'].items():
+            day_plan = f"{day}:\n"
+            for time_slot, activities in schedule.items():
+                if activities:
+                    day_plan += f"- {time_slot}:\n"
+                    for activity in activities:
+                        day_plan += f"  • {activity['name']} ({activity.get('address', '')})\n"
+            daily_plans.append(day_plan)
+
+        prompt = f"""Create a detailed {itinerary_data['travel_days']}-day travel itinerary for {itinerary_data['destination']} based on this schedule:
+        
+        {'\n'.join(daily_plans)}
+
+        Travel Group: {itinerary_data['companions']}
+        Budget Level: {itinerary_data['budget']}
+        Weather Forecast:
+        {', '.join([f"{day['temp']}°C {day['description']}" for day in itinerary_data.get('weather', [])])}
+
+        Enhance with:
+        - Thematic daily summaries
+        - Restaurant recommendations near listed locations
+        - Transportation tips between scheduled activities
+        - Cultural insights relevant to planned visits
+        - Weather-appropriate clothing advice
+        
+        Style: Professional yet enthusiastic, avoid markdown formatting.
+        """
+        
+        return prompt
+    
+    except Exception as e:
+        logging.error(f"Prompt creation error: {str(e)}")
+        return None
+
+
 @app.route('/')
 def home():
-    return render_template('forum.html', google_api_key=API_KEYS["GOOGLE_API_KEY"])
+    try:
+        user = None
+        if 'user_id' in session:
+            print("Session user_id:", session['user_id'])  # For debugging
+            user = users_collection.find_one({"_id": ObjectId(session['user_id'])})
+            print("User found:", bool(user))  # For debugging
+            
+        return render_template('index.html', current_user=user)
+    except Exception as e:
+        print("Home route error:", str(e))
+        return render_template('index.html', current_user=None)
+
+@app.route('/login')
+def login_page():
+    return render_template('login.html')
+
+@app.route('/signup')
+def signup_page():
+    return render_template('signup.html')
+
+@app.route('/forum')
+def forum():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return render_template('forum.html', 
+        google_api_key=API_KEYS["GOOGLE_API_KEY"],
+        current_user=users_collection.find_one({"_id": ObjectId(session['user_id'])})
+    )
+
+# User routes
+@app.route('/signup', methods=['POST'])
+@csrf.exempt
+def signup():
+    try:
+        data = request.get_json()
+        required_fields = ['name', 'email', 'password', 'confirm_password']
+        
+        # Validation checks
+        if any(field not in data for field in required_fields):
+            return jsonify({"error": "Missing required fields"}), 400
+            
+        if data['password'] != data['confirm_password']:
+            return jsonify({"error": "Passwords do not match"}), 400
+
+        if users_collection.find_one({"email": data['email']}):
+            return jsonify({"error": "Email already exists"}), 409
+
+        hashed_pw = generate_password_hash(data['password'])
+        user = {
+            "name": data['name'],
+            "email": data['email'],
+            "password": hashed_pw,
+            "created_at": datetime.now(timezone.utc)
+        }
+        
+        result = users_collection.insert_one(user)
+        return jsonify({
+            "message": "User created successfully",
+            "user_id": str(result.inserted_id)
+        }), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/login', methods=['POST'])
+@csrf.exempt
+def login():
+    try:
+        data = request.get_json()
+        user = users_collection.find_one({"email": data['email']})
+        
+        if not user or not check_password_hash(user['password'], data['password']):
+            return jsonify({"error": "Invalid credentials"}), 401
+            
+
+        # Create session
+        session['user_id'] = str(user['_id'])
+        session.permanent = True
+
+        return jsonify({
+            "message": "Login successful",
+            "user_id": str(user['_id'])
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('home'))
+
+# Add protected test route
+@app.route('/protected')
+def protected():
+    if 'user_id' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    return jsonify({"message": "Protected content"}), 200
+
+@app.route('/check-auth')
+def check_auth():
+    if 'user_id' in session:
+        user = users_collection.find_one({"_id": ObjectId(session['user_id'])})
+        return jsonify({
+            "authenticated": True,
+            "user": {
+                "name": user['name'],
+                "email": user['email']
+            }
+        }), 200
+    return jsonify({"authenticated": False}), 200
+
+@app.route('/debug-session')
+def debug_session():
+    return jsonify({
+        'session': dict(session),
+        'user_id': session.get('user_id', None)
+    })
+
+@app.route('/debug-cookies')
+def debug_cookies():
+    return jsonify({'cookies': request.cookies})
+
+
+@app.route('/profile')
+def profile():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = users_collection.find_one({"_id": ObjectId(session['user_id'])})
+    itineraries = itinerary_collection.find(
+        {"user_id": ObjectId(session['user_id'])}
+    ).sort('created_at', -1)
+    
+    return render_template('profile.html', 
+        user=user,
+        itineraries=itineraries
+    )
+
+@app.template_filter('datetimeformat')
+def datetimeformat(value, format='%b %d, %Y'):
+    if isinstance(value, str):
+        # Convert string to datetime object
+        try:
+            value = datetime.strptime(value, '%Y-%m-%d')
+        except ValueError:
+            return "Invalid date format"
+    return value.strftime(format)
 
 @app.route('/generate', methods=['POST', 'OPTIONS'])
 @csrf.exempt
@@ -426,23 +633,53 @@ def generate_itinerary():
         weather = fetch_weather(data['destination'], travel_days)
 
         itinerary_data = {
-            'destination': data['destination'],
-            'start_location': data['start_location'],
-            'travel_days': travel_days,
-            'travel_date': data['travel_date'],
-            'budget': data['budget'],
-            'companions': data['companions'],
-            'activities': submitted_activities,
-            'city_info': city_info,
-            'itinerary': itinerary,
-            'weather': weather,
-            'optimized_places': optimized_places,
-            'created_at': datetime.now(timezone.utc)
-        }
+        
+                'destination': data['destination'],
+                'start_location': data['start_location'],
+                'travel_days': travel_days,
+                'travel_date': datetime.strptime(data['travel_date'], '%Y-%m-%d'),  # Parsed date
+                'budget': data['budget'],
+                'companions': data['companions'],
+                'activities': submitted_activities,
+                'city_info': city_info,
+                'itinerary': itinerary,
+                'weather': weather,
+                'optimized_places': optimized_places,
+                'ai_content': "Could not generate AI suggestions",
+                'user_id': ObjectId(session['user_id']),
+                'created_at': datetime.now(timezone.utc)  # Single creation timestamp
 
+        }
+ # AI Content Generation
+        try:
+            ai_prompt = create_ai_prompt(itinerary_data)
+            if ai_prompt:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a professional travel planner. Create detailed, engaging itineraries."},
+                        {"role": "user", "content": ai_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=1500
+                )
+                ai_content = response.choices[0].message.content
+                # Convert markdown-style formatting to HTML
+                ai_content = ai_content.replace('**', '<strong>').replace('**', '</strong>')
+                ai_content = ai_content.replace('*', '<em>').replace('*', '</em>')
+                ai_content = ai_content.replace('\n', '<br>')
+                itinerary_data['ai_content'] = ai_content
+        except Exception as e:
+            app.logger.error(f"AI Generation Error: {str(e)}")
+            itinerary_data['ai_content'] = "AI suggestions unavailable due to an error"
+            # Continue processing even if AI fails
+            
         result = itinerary_collection.insert_one(itinerary_data)
         itinerary_id = str(result.inserted_id)
-
+        users_collection.update_one(
+        {"_id": ObjectId(session['user_id'])},
+        {"$push": {"itineraries": itinerary_id}}
+         )
         return jsonify({
             'itinerary_id': itinerary_id,
             'city_info': city_info,
@@ -451,8 +688,10 @@ def generate_itinerary():
             'map_data': {
                 'start_location': data['start_location'],
                 'places': optimized_places
-            }
+            },
+            'ai_content': itinerary_data['ai_content']  # Include in response
         }), 200
+
 
     except Exception as e:
         app.logger.error(f"Unexpected error: {traceback.format_exc()}")
@@ -464,6 +703,16 @@ def generate_itinerary():
 
 @app.route('/itinerary/<itinerary_id>')
 def view_itinerary(itinerary_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    itinerary = itinerary_collection.find_one({
+        "_id": ObjectId(itinerary_id),
+        "user_id": ObjectId(session['user_id'])
+    })
+    
+    if not itinerary:
+        return render_template('error.html', error="Itinerary not found"), 404
     try:
         if not ObjectId.is_valid(itinerary_id):
             return render_template('error.html', error="Invalid itinerary ID"), 400
@@ -490,57 +739,7 @@ def view_itinerary(itinerary_id):
         logging.error(f"Itinerary Error: {traceback.format_exc()}")
         return render_template('error.html', error="Server error"), 500
 
-@app.route('/signup', methods=['POST'])
-def signup():
-    try:
-        data = request.json
-        required_fields = ['name', 'email', 'password', 'confirm_password']
-        
-        if not all(field in data for field in required_fields):
-            return jsonify({"error": "All fields required"}), 400
 
-        if data['password'] != data['confirm_password']:
-            return jsonify({"error": "Passwords mismatch"}), 400
-
-        if users_collection.find_one({"email": data['email']}):
-            return jsonify({"error": "Email exists"}), 409
-
-        user_data = {
-            "name": data['name'],
-            "email": data['email'],
-            "password": generate_password_hash(data['password']),
-            "created_at": datetime.now(timezone.utc)
-        }
-        
-        users_collection.insert_one(user_data)
-        return jsonify({"message": "User created"}), 201
-
-    except Exception as e:
-        logging.error(f"Signup error: {str(e)}")
-        return jsonify({"error": "Registration failed"}), 500
-
-@app.route('/login', methods=['POST'])
-def login():
-    try:
-        data = request.json
-        if not all(field in data for field in ['email', 'password']):
-            return jsonify({"error": "Email and password required"}), 400
-
-        user = users_collection.find_one({"email": data['email']})
-        if not user or not check_password_hash(user['password'], data['password']):
-            return jsonify({"error": "Invalid credentials"}), 401
-
-        return jsonify({
-            "message": "Login successful",
-            "user": {
-                "name": user['name'],
-                "email": user['email']
-            }
-        }), 200
-
-    except Exception as e:
-        logging.error(f"Login error: {str(e)}")
-        return jsonify({"error": "Authentication failed"}), 500
 
 @app.route('/test_db')
 def test_db():
@@ -556,11 +755,21 @@ def test_db():
 
 @app.errorhandler(404)
 def not_found(error):
-    return render_template('error.html', error="Page not found"), 404
+    try:
+        return render_template('error.html', 
+            error_code="404 Not Found",
+            error_message="The page you requested doesn't exist"), 404
+    except TemplateNotFound:
+        return "404 Error: Page not found (template missing)", 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    return render_template('error.html', error="Server error"), 500
+    try:
+        return render_template('error.html',
+            error_code="500 Server Error",
+            error_message="Something went wrong on our end"), 500
+    except TemplateNotFound:
+        return "500 Error: Server error (template missing)", 500
 
 
 

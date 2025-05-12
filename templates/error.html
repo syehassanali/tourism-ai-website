@@ -1,27 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Error - AI Travel Planner</title>
+    <title>Error</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
 </head>
 <body class="bg-light">
     <div class="container mt-5">
-        <div class="card border-danger shadow">
-            <div class="card-header bg-danger text-white">
-                <h2><i class="fas fa-exclamation-triangle"></i> Error</h2>
-            </div>
-            <div class="card-body">
-                <h4 class="text-danger mb-4">{{ error }}</h4>
-                {% if details %}
-                <div class="alert alert-secondary">
-                    <strong>Technical Details:</strong> {{ details }}
-                </div>
-                {% endif %}
-                <a href="/" class="btn btn-primary mt-3">
-                    <i class="fas fa-home me-2"></i>Return to Home
-                </a>
-            </div>
+        <div class="alert alert-danger">
+            <h2>{% block error_code %}{% endblock %}</h2>
+            <p class="mb-0">{% block error_message %}{% endblock %}</p>
         </div>
+        <a href="/" class="btn btn-primary">Return Home</a>
     </div>
 </body>
 </html>

@@ -4,5 +4,7 @@ pymongo
 requests
 openai
 flask-bcrypt
-werkzeug
-flask-wtf>=1.0.0
+Flask-WTF==1.2.1
+python-dotenv==1.0.0
+pymongo[srv]==4.6.0
+werkzeug==3.0.1

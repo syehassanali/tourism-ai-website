@@ -1,10 +1,11 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - AI Travel Planner</title>
-    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="static/css/custom-styles.css">
     <style>
@@ -161,53 +162,43 @@
    
     <!-- Enhanced Login Script -->
     <script>
-        document.getElementById("login-form").addEventListener("submit", async function (e) {
-            e.preventDefault();
-            const form = e.target;
-            const submitBtn = form.querySelector('button[type="submit"]');
-            
-            // Show loading state
-            submitBtn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Signing In...';
-            submitBtn.disabled = true;
+       document.getElementById("login-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    
+    submitBtn.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Signing In...';
+    submitBtn.disabled = true;
 
-            const email = document.getElementById("email").value.trim();
-            const password = document.getElementById("password").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
 
-            try {
-                const response = await fetch("http://localhost:5000/login", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ email, password })
-                });
-
-                const result = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(result.error || 'Login failed');
-                }
-
-                // Store token and redirect
-                localStorage.setItem('authToken', result.token);
-                window.location.href = "index.html";
-
-            } catch (error) {
-                // Show error message
-                const errorAlert = document.createElement('div');
-                errorAlert.className = 'alert alert-danger mt-4';
-                errorAlert.innerHTML = `
-                    <i class="fas fa-exclamation-circle me-2"></i>
-                    ${error.message}
-                `;
-                form.prepend(errorAlert);
-                
-                // Remove error after 5 seconds
-                setTimeout(() => errorAlert.remove(), 5000);
-            } finally {
-                // Reset button state
-                submitBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Sign In';
-                submitBtn.disabled = false;
-            }
+    try {
+        const response = await fetch("/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+            credentials: 'include'  // Crucial for cookies
         });
+
+        const result = await response.json();
+
+        if (!response.ok) throw new Error(result.error || 'Login failed');
+
+        // Redirect to home route after successful login
+        window.location.href = "/";
+
+    } catch (error) {
+        const errorAlert = document.createElement('div');
+        errorAlert.className = 'alert alert-danger mt-4';
+        errorAlert.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i>${error.message}`;
+        form.prepend(errorAlert);
+        setTimeout(() => errorAlert.remove(), 5000);
+    } finally {
+        submitBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Sign In';
+        submitBtn.disabled = false;
+    }
+});
     </script>
 </body>
 </html>
