@@ -33,7 +33,6 @@ from flask_cors import CORS, cross_origin
 import requests
 import os
 from datetime import datetime, timezone, timedelta
-import openai
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
 import random
@@ -127,6 +126,14 @@ def convert_bson_types(obj):
         return str(obj)
     if isinstance(obj, Decimal128):
         return float(obj.to_decimal())
+    if isinstance(obj, dict):
+        converted = {}
+        for k, v in obj.items():
+            if k in ['lat', 'lng'] and isinstance(v, Decimal128):
+                converted[k] = float(v.to_decimal())
+            else:
+                converted[k] = convert_bson_types(v)
+        return converted
     if isinstance(obj, datetime):
         return obj.isoformat()
     if isinstance(obj, list):
@@ -324,7 +331,7 @@ def fetch_places(query, max_results=5):
         return [{
             'name': p['name'],
             'address': p.get('formatted_address', 'Address not available'),
-            'rating': p.get('rating', 3.0),
+            'rating': p.get('rating', 5.0),
             'price_level': p.get('price_level', random.randint(1, 4))
         } for p in results]
     except Exception as e:
@@ -405,6 +412,7 @@ def create_ai_prompt(itinerary_data):
     except Exception as e:
         logging.error(f"Prompt creation error: {str(e)}")
         return None
+
 
 
 @app.route('/')
@@ -632,12 +640,19 @@ def generate_itinerary():
         itinerary = create_time_based_itinerary(optimized_places, travel_days)
         weather = fetch_weather(data['destination'], travel_days)
 
+        geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json?address={data['start_location']}&key={API_KEYS['GOOGLE_API_KEY']}"
+        geo_response = requests.get(geocode_url, timeout=10)
+        geo_data = geo_response.json()
+        start_lat_lng = geo_data['results'][0]['geometry']['location'] if geo_data.get('results') else None
+
         itinerary_data = {
         
                 'destination': data['destination'],
                 'start_location': data['start_location'],
                 'travel_days': travel_days,
                 'travel_date': datetime.strptime(data['travel_date'], '%Y-%m-%d'),  # Parsed date
+                'start_lat': start_lat_lng['lat'] if start_lat_lng else None,
+                'start_lng': start_lat_lng['lng'] if start_lat_lng else None,
                 'budget': data['budget'],
                 'companions': data['companions'],
                 'activities': submitted_activities,
@@ -647,8 +662,10 @@ def generate_itinerary():
                 'optimized_places': optimized_places,
                 'ai_content': "Could not generate AI suggestions",
                 'user_id': ObjectId(session['user_id']),
-                'created_at': datetime.now(timezone.utc)  # Single creation timestamp
-
+                'created_at': datetime.now(timezone.utc),  # Single creation timestamp
+                'version': 1,
+                'previous_versions': [],
+                'is_current': True
         }
  # AI Content Generation
         try:
@@ -739,7 +756,239 @@ def view_itinerary(itinerary_id):
         logging.error(f"Itinerary Error: {traceback.format_exc()}")
         return render_template('error.html', error="Server error"), 500
 
+@app.route('/itinerary/<itinerary_id>/update', methods=['POST'])
+@csrf.exempt
+def update_itinerary(itinerary_id):
+    try:
+        # Authentication and validation
+        if 'user_id' not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+            
+        user_id = ObjectId(session['user_id'])
+        modifications = request.get_json().get('modifications', {})
+        
+        if not modifications:
+            return jsonify({"error": "No modifications provided"}), 400
 
+        # Fetch and validate original itinerary
+        original = itinerary_collection.find_one({
+            '_id': ObjectId(itinerary_id),
+            'user_id': user_id,
+            'is_current': True
+        })
+        if not original:
+            return jsonify({"error": "Itinerary not found"}), 404
+
+        # Create new itinerary version
+        new_itinerary = {
+            'user_id': original['user_id'],
+            'version': original['version'] + 1,
+            'previous_versions': original['previous_versions'] + [original['_id']],
+            'created_at': datetime.now(timezone.utc),
+            'is_current': True,
+            'modification_history': original.get('modification_history', []) + [{
+                'timestamp': datetime.now(timezone.utc),
+                'changes': modifications
+            }],
+            # Core itinerary data
+            'destination': original['destination'],
+            'start_location': original['start_location'],
+            'start_lat': original.get('start_lat'),
+            'start_lng': original.get('start_lng'),
+            'travel_days': original['travel_days'],
+            'travel_date': original['travel_date'],
+            'budget': original['budget'],
+            'companions': original['companions'],
+            'activities': original['activities'].copy(),
+            'optimized_places': original['optimized_places'].copy(),
+            'city_info': original['city_info'].copy(),
+            'weather': original['weather'].copy(),
+            'ai_content': original.get('ai_content', '')
+        }
+
+        # Apply modifications
+        try:
+            # Handle duration changes
+            if 'travel_days' in modifications:
+                new_days = int(modifications['travel_days'])
+                if not 1 <= new_days <= 14:
+                    raise ValueError("Invalid day count (1-14)")
+                new_itinerary = handle_duration_change(new_itinerary, new_days)
+
+            # Handle location replacements
+            if 'replacements' in modifications:
+                new_itinerary = handle_location_replacements(
+                    new_itinerary, 
+                    modifications['replacements']
+                )
+
+            # Handle new activities
+            if 'new_activities' in modifications:
+                valid_activities = {'city', 'beaches', 'hiking', 'food'}
+                new_activities = [
+                    a for a in modifications['new_activities']
+                    if a in valid_activities and a not in new_itinerary['activities']
+                ]
+                new_itinerary = handle_new_activities(new_itinerary, new_activities)
+
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+
+        # Geocode new places and optimize routes
+        try:
+            # Ensure all places have coordinates
+            optimized_places = []
+            for place in new_itinerary['optimized_places']:
+                if 'lat' not in place or 'lng' not in place:
+                    geocoded = geocode_place(place['address'])
+                    if geocoded:
+                        place.update(geocoded)
+                        optimized_places.append(place)
+                else:
+                    optimized_places.append(place)
+            
+            # Re-optimize with proper coordinates
+            optimized_places = optimize_routes(
+                optimized_places,
+                new_itinerary['start_location'],
+                new_itinerary.get('start_lat'),
+                new_itinerary.get('start_lng')
+            )
+            new_itinerary['optimized_places'] = optimized_places
+
+        except Exception as e:
+            app.logger.error(f"Routing error: {str(e)}")
+            return jsonify({"error": "Failed to optimize routes"}), 500
+
+        # Regenerate time-based schedule
+        try:
+            new_itinerary['itinerary'] = create_time_based_itinerary(
+                new_itinerary['optimized_places'], 
+                new_itinerary['travel_days']
+            )
+        except Exception as e:
+            app.logger.error(f"Scheduling error: {str(e)}")
+            return jsonify({"error": "Failed to generate schedule"}), 500
+
+        # Regenerate AI content with proper error handling
+        try:
+            ai_prompt = create_ai_prompt(new_itinerary)
+            if ai_prompt:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{
+                        "role": "system",
+                        "content": "Generate a professional travel itinerary with time slots, locations, and practical advice."
+                    }, {
+                        "role": "user",
+                        "content": ai_prompt
+                    }],
+                    temperature=0.7,
+                    max_tokens=1500
+                )
+                ai_content = response.choices[0].message.content
+                # Safe HTML conversion
+                ai_content = ai_content.replace('\n', '<br>') \
+                                       .replace('**', '<strong>') \
+                                       .replace('**', '</strong>') \
+                                       .replace('*', '• ')
+                new_itinerary['ai_content'] = ai_content
+        except Exception as e:
+            app.logger.error(f"AI generation failed: {str(e)}")
+            new_itinerary['ai_content'] = "AI suggestions currently unavailable"
+
+        # Database operations
+        try:
+            # Insert new version
+            result = itinerary_collection.insert_one(new_itinerary)
+            # Mark old version as inactive
+            itinerary_collection.update_one(
+                {'_id': original['_id']},
+                {'$set': {'is_current': False}}
+            )
+        except Exception as e:
+            app.logger.error(f"Database error: {str(e)}")
+            return jsonify({"error": "Failed to save itinerary"}), 500
+
+        return jsonify({
+            'new_itinerary_id': str(result.inserted_id),
+            'version': new_itinerary['version'],
+            'message': 'Itinerary updated successfully'
+        }), 200
+
+    except Exception as e:
+        app.logger.error(f"Update failed: {traceback.format_exc()}")
+        return jsonify({
+            "error": "Internal server error",
+            "message": "Please try again later"
+        }), 500
+
+# Helper function for geocoding
+def geocode_place(address):
+    try:
+        geocode_url = f"https://maps.googleapis.com/maps/api/geocode/json"
+        params = {
+            'address': address,
+            'key': API_KEYS['GOOGLE_API_KEY']
+        }
+        response = requests.get(geocode_url, params=params, timeout=10)
+        response.raise_for_status()
+        results = response.json().get('results', [])
+        if results:
+            location = results[0]['geometry']['location']
+            return {
+                'lat': location['lat'],
+                'lng': location['lng']
+            }
+        return None
+    except Exception as e:
+        app.logger.warning(f"Geocoding failed for {address}: {str(e)}")
+        return None
+
+
+def handle_duration_change(itinerary, new_days):
+    old_days = itinerary['travel_days']
+    if new_days > old_days:
+        # Calculate how many new places we need (3 per extra day)
+        additional_needed = (new_days - old_days) * 3
+        new_places = []
+        
+        # Get new places for existing activities
+        for activity in itinerary['activities']:
+            places = fetch_places(f"{activity} in {itinerary['destination']}", 
+                                max_results=additional_needed)
+            new_places.extend(places)
+        
+        # Add unique new places
+        unique_new = [p for p in new_places if p not in itinerary['optimized_places']]
+        itinerary['optimized_places'].extend(unique_new[:additional_needed])
+    
+    elif new_days < old_days:
+        # Reduce places proportionally
+        keep_count = int(len(itinerary['optimized_places']) * (new_days/old_days))
+        itinerary['optimized_places'] = itinerary['optimized_places'][:keep_count]
+    
+    return itinerary
+
+
+def handle_location_replacements(itinerary, replacements):
+    for replacement in replacements:
+        old_place = next((p for p in itinerary['optimized_places'] if p['name'] == replacement['old']), None)
+        if old_place:
+            new_places = fetch_places(f"{replacement['type']} in {itinerary['destination']}")
+            if new_places:
+                itinerary['optimized_places'].remove(old_place)
+                itinerary['optimized_places'].append(new_places[0])
+    return itinerary
+
+
+def handle_new_activities(itinerary, new_activities):
+    for activity in new_activities:
+        if activity not in itinerary['activities']:
+            new_places = fetch_places(f"{activity} in {itinerary['destination']}")
+            itinerary['optimized_places'].extend(new_places)
+            itinerary['activities'].append(activity)
+    return itinerary
 
 @app.route('/test_db')
 def test_db():
@@ -752,6 +1001,27 @@ def test_db():
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/get_map_data/<itinerary_id>')
+def get_map_data(itinerary_id):
+    if 'user_id' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    itinerary = itinerary_collection.find_one({
+        "_id": ObjectId(itinerary_id),
+        "user_id": ObjectId(session['user_id'])
+    })
+    
+    if not itinerary:
+        return jsonify({"error": "Itinerary not found"}), 404
+        
+    return jsonify({
+        "start_location": itinerary['start_location'],
+        "start_lat": itinerary.get('start_lat'),
+        "start_lng": itinerary.get('start_lng'),
+        "places": itinerary['optimized_places']
+    }), 200
 
 @app.errorhandler(404)
 def not_found(error):
@@ -776,3 +1046,4 @@ def internal_error(error):
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+

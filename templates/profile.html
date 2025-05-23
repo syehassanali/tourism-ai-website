@@ -72,5 +72,32 @@
     {% endif %}
 </div>
 
+<!-- Modify itineraries display to show version history -->
+{% for itinerary in itineraries %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>{{ itinerary.destination }} 
+            <span class="badge bg-secondary">v{{ itinerary.version }}</span>
+            {% if not itinerary.is_current %}
+            <span class="badge bg-warning">Old Version</span>
+            {% endif %}
+        </h5>
+        <div class="version-history">
+            {% if itinerary.previous_versions %}
+            <p class="text-muted small">
+                Previous versions: 
+                {% for ver in itinerary.previous_versions %}
+                <a href="/itinerary/{{ ver }}" class="text-primary">v{{ loop.index }}</a>
+                {% endfor %}
+            </p>
+            {% endif %}
+        </div>
+        <a href="/itinerary/{{ itinerary._id }}" class="btn btn-primary">
+            View Itinerary
+        </a>
+    </div>
+</div>
+{% endfor %}
+
 </body>
 </html>

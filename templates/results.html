@@ -4,150 +4,265 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Travel Itinerary - AI Travel Planner</title>
+    <title>{{ itinerary.destination }} Itinerary - AI Travel Planner</title>
     
-    <!-- Bootstrap CSS with fallback -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" 
-          rel="stylesheet" 
-          integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" 
-          crossorigin="anonymous">
-    <script>
-    window.addEventListener('DOMContentLoaded', function() {
-        if(typeof bootstrap === 'undefined') {
-            var link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = '{{ url_for("static", filename="css/bootstrap.min.css") }}';
-            document.head.appendChild(link);
-        }
-    });
-    </script>
-
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+    .city-overview {
+        display: flex;
+        gap: 2rem;
+        margin-bottom: 3rem;
+        flex-direction: row-reverse; /* Changed this line */
+    }
+
+    .city-media {
+        flex: 0 0 45%;
+        max-width: 600px;
+    }
+
+    .city-description {
+        flex: 1;
+        padding: 2rem;
+        background: white;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .city-carousel {
+        height: 400px;
+        border-radius: 1rem;
+        overflow: hidden;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+
+    .city-carousel img {
+        height: 500px;
+        object-fit: cover;
+        object-position: center;
+    }
+
+    .city-description h2 {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        color: var(--text-primary);
+        border-bottom: 2px solid var(--primary-color);
+        padding-bottom: 0.5rem;
+    }
+
+    .city-description p {
+        font-size: 1rem;
+        line-height: 1.8;
+        color: var(--text-secondary);
+        margin-bottom: 0;
+    }
+
+    @media (max-width: 992px) {
+        .city-overview {
+            flex-direction: column;
+        }
+        
+        .city-media {
+            max-width: 100%;
+        }
+        
+        .city-carousel,
+        .city-carousel img {
+            height: 300px;
+        }
+    }
         :root {
-            --primary-color: #3498db;
-            --secondary-color: #2c3e50;
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --accent-color: #60a5fa;
+            --text-primary: #1f2937;
+            --text-secondary: #4b5563;
+            --background-light: #f8fafc;
         }
 
-        .bg-primary-gradient {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)) !important;
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+            line-height: 1.6;
+            background: #f8f9fa;
+        }
+
+        .navbar {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
         }
 
         .city-carousel {
-            border-radius: 15px;
+            border-radius: 1rem;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
         }
 
         .city-carousel img {
-            height: 1000px;
+            height: 500px;
             object-fit: cover;
-            width: 100%;
+            object-position: center;
         }
 
-        .carousel-control-prev,
-        .carousel-control-next {
-            width: 5%;
-            background: rgba(0,0,0,0.2);
+        .card {
+            border: none;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
         }
 
         .time-slot-card {
-            border-left: 3px solid var(--primary-color);
+            border-left: 3px solid var(--accent-color);
             padding-left: 1.5rem;
             margin-left: 1rem;
             position: relative;
             margin-bottom: 2rem;
+            background: var(--background-light);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
         }
 
         .time-slot-card::before {
             content: '';
             position: absolute;
             left: -0.8rem;
-            top: 1rem;
+            top: 1.25rem;
             width: 1.5rem;
             height: 1.5rem;
-            background: var(--primary-color);
+            background: var(--accent-color);
             border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
 
         .map-container {
             height: 400px;
-            border-radius: 15px;
+            border-radius: 1rem;
             overflow: hidden;
-            border: 2px solid rgba(52, 152, 219, 0.1);
+            border: 1px solid #e5e7eb;
         }
 
         .weather-card {
-            transition: all 0.3s ease;
-            border-radius: 15px;
-            background: rgba(255,255,255,0.9);
-        }
-
-        .weather-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s ease;
         }
 
         .activity-time {
-            font-size: 0.9rem;
-            color: #6c757d;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .travel-duration {
-            background: rgba(52, 152, 219, 0.1);
+            background: rgba(96, 165, 250, 0.1);
+            color: var(--primary-color);
             padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.85rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
             display: inline-flex;
             align-items: center;
             gap: 0.25rem;
         }
 
-        .print-only {
-            display: none;
+        .modal-content {
+            border-radius: 1rem;
+            border: none;
+        }
+
+        .replacement-field {
+            background: var(--background-light);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid #e5e7eb;
+        }
+
+        .activity-card {
+            transition: all 0.2s ease;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            cursor: pointer;
+        }
+
+        .activity-card:hover {
+            border-color: var(--accent-color);
+            background: rgba(96, 165, 250, 0.05);
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 0.75rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            transform: translateY(-1px);
         }
 
         .ai-day-suggestions {
-            border-left: 3px solid #3498db;
-            margin-left: 2rem;
+            background: var(--background-light);
+            border-radius: 0.75rem;
             padding: 1.5rem;
-            background: #f8f9fa;
-            border-radius: 8px;
             margin-top: 2rem;
+            border-left: 4px solid var(--primary-color);
         }
 
-        .ai-day-suggestions h5 {
-            font-size: 1.25rem;
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 0.5rem;
-            margin-bottom: 1rem;
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+            margin-left: 1rem;
         }
 
-        @media print {
-            .no-print {
-                display: none !important;
-            }
-            .print-only {
-                display: block !important;
-            }
-            .card {
-                border: none !important;
-                box-shadow: none !important;
-            }
-            .ai-day-suggestions {
-                border: none;
-                margin-left: 0;
-                padding: 0;
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: -1px;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: #e5e7eb;
+        }
+
+        .gradient-text {
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        @media (min-width: 992px) {
+            .city-carousel img {
+                height: 600px;
             }
         }
     </style>
 </head>
 <body class="bg-light">
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary-gradient shadow-sm no-print">
+    <nav class="navbar navbar-expand-lg navbar-dark shadow-sm no-print">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center" href="/">
                 <img src="{{ url_for('static', filename='images/logo.png') }}" 
@@ -160,7 +275,7 @@
     </nav>
 
     {% if not itinerary %}
-    <div class="alert alert-danger mt-5">
+    <div class="alert alert-danger mt-5 container">
         <h4>Error Loading Itinerary</h4>
         <p>Failed to load itinerary data. Please check the itinerary ID or try again later.</p>
         <a href="/" class="btn btn-outline-danger">
@@ -169,51 +284,72 @@
     </div>
     {% else %}
     
-    <!-- Main Content -->
-    <main class="container py-5">
-        <!-- City Overview -->
-        <section class="mb-5">
-            {% if itinerary.city_info and itinerary.city_info.images %}
-            <div id="cityCarousel" class="carousel slide city-carousel" data-bs-ride="carousel">
-                <div class="carousel-inner">
-                    {% for img in itinerary.city_info.images %}
-                    <div class="carousel-item {% if loop.first %}active{% endif %}">
-                        <img src="{{ img }}" 
-                             class="d-block w-100" 
-                             alt="{{ itinerary.destination }} view" 
-                             loading="lazy">
-                    </div>
-                    {% endfor %}
+ <!-- Modified City Overview Section -->
+<section class="city-overview">
+    <div class="city-media">
+        {% if itinerary.city_info and itinerary.city_info.images %}
+        <div id="cityCarousel" class="carousel slide city-carousel" data-bs-ride="carousel">
+            <div class="carousel-inner">
+                {% for img in itinerary.city_info.images %}
+                <div class="carousel-item {% if loop.first %}active{% endif %}">
+                    <img src="{{ img }}" 
+                         class="d-block w-100" 
+                         alt="{{ itinerary.destination }} view" 
+                         loading="lazy">
                 </div>
-                <button class="carousel-control-prev" type="button" data-bs-target="#cityCarousel" data-bs-slide="prev">
-                    <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-                    <span class="visually-hidden">Previous</span>
-                </button>
-                <button class="carousel-control-next" type="button" data-bs-target="#cityCarousel" data-bs-slide="next">
-                    <span class="carousel-control-next-icon" aria-hidden="true"></span>
-                    <span class="visually-hidden">Next</span>
-                </button>
+                {% endfor %}
             </div>
-            {% endif %}
-            
-            <h1 class="display-5 fw-bold mt-4 text-center">{{ itinerary.destination|default("Your Destination", true) }}</h1>
-            {% if itinerary.city_info and itinerary.city_info.description %}
-            <p class="lead text-muted text-center mb-0">{{ itinerary.city_info.description }}</p>
-            {% endif %}
-        </section>
+            <button class="carousel-control-prev" type="button" data-bs-target="#cityCarousel" data-bs-slide="prev">
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Previous</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#cityCarousel" data-bs-slide="next">
+                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Next</span>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="city-description">
+        <h2>About {{ itinerary.destination }}</h2>
+        {% if itinerary.city_info and itinerary.city_info.description %}
+        <p class="lead">{{ itinerary.city_info.description }}</p>
+        {% endif %}
+        
+        {% if itinerary.city_info and itinerary.city_info.fast_facts %}
+        <div class="mt-4">
+            <h5 class="mb-3 text-primary">Key Facts</h5>
+            <div class="row g-3">
+                {% for fact in itinerary.city_info.fast_facts %}
+                <div class="col-md-6">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <i class="fas fa-info-circle text-primary"></i>
+                        <span>{{ fact }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
 
         <!-- Itinerary Content -->
         <div class="row g-4">
             <!-- Main Itinerary -->
             <div class="col-lg-8">
-                <div class="card shadow-sm border-0 mb-4">
+                <div class="card">
                     <div class="card-header bg-white border-bottom py-3">
-                        <h3 class="mb-0"><i class="fas fa-route me-2 text-primary"></i>Daily Schedule</h3>
+                        <h3 class="mb-0 d-flex align-items-center gap-2">
+                            <i class="fas fa-route text-primary"></i>
+                            Daily Schedule
+                        </h3>
                     </div>
                     <div class="card-body">
-                        {% if itinerary.itinerary %}
+                        <div class="timeline">
                             {% for day_number, schedule in itinerary.itinerary.items() %}
-                            <div class="day-card mb-5">
+                            <div class="timeline-item mb-5">
                                 <h4 class="mb-4 text-primary">{{ day_number }}</h4>
                                 
                                 {% for time_slot, activities in schedule.items() %}
@@ -225,13 +361,13 @@
                                             <div class="card-body">
                                                 <div class="d-flex justify-content-between align-items-start">
                                                     <div>
-                                                        <h5 class="mb-1">{{ activity.name|default("Activity", true) }}</h5>
+                                                        <h5 class="mb-1">{{ activity.name }}</h5>
                                                         {% if activity.address %}
                                                         <p class="text-muted mb-2 small">{{ activity.address }}</p>
                                                         {% endif %}
                                                         <div class="activity-time">
                                                             <i class="fas fa-clock me-1 text-primary"></i>
-                                                            {{ activity.start_time|default("09:00") }} - {{ activity.end_time|default("18:00") }}
+                                                            {{ activity.start_time }} - {{ activity.end_time }}
                                                             {% if activity.travel_time %}
                                                             <span class="travel-duration ms-2">
                                                                 <i class="fas fa-car me-1 text-primary"></i>{{ activity.travel_time }}
@@ -254,10 +390,10 @@
                                 </div>
                                 {% endfor %}
 
-                                <!-- AI Suggestions for this day -->
+                                <!-- AI Suggestions -->
                                 <div class="ai-day-suggestions">
                                     <h5 class="text-primary mb-3">
-                                        <i class="fas fa-robot me-2"></i>AI Recommendations for {{ day_number }}
+                                        <i class="fas fa-robot me-2"></i>AI Recommendations
                                     </h5>
                                     {% if itinerary.ai_content %}
                                         {% set day_index = loop.index %}
@@ -273,89 +409,85 @@
                                 </div>
                             </div>
                             {% endfor %}
-                        {% else %}
-                            <div class="alert alert-warning">No itinerary data available</div>
-                        {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
 
             <!-- Sidebar -->
             <div class="col-lg-4">
-                <!-- Route Map -->
-                {% if itinerary.map_data and itinerary.map_data.places %}
-                <div class="card mb-4 shadow-sm border-0 no-print">
-                    <div class="card-header bg-white border-bottom py-3">
-                        <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2 text-primary"></i>Travel Route</h5>
+                <div class="sticky-top" style="top: 1rem;">
+                    <!-- Map Card -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0 d-flex align-items-center gap-2">
+                                <i class="fas fa-map-marked-alt text-primary"></i>
+                                Travel Route
+                            </h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="routeMap" class="map-container"></div>
+                        </div>
                     </div>
-                    <div class="card-body p-0">
-                        <div id="routeMap" class="map-container"></div>
-                    </div>
-                </div>
-                {% endif %}
 
-                <!-- Weather Forecast -->
-                {% if itinerary.weather %}
-                <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-header bg-white border-bottom py-3">
-                        <h5 class="mb-0"><i class="fas fa-cloud-sun me-2 text-primary"></i>Weather Forecast</h5>
-                    </div>
-                    <div class="card-body">
-                        {% for forecast in itinerary.weather %}
-                        <div class="weather-card card mb-3">
-                            <div class="card-body py-3">
-                                <div class="d-flex justify-content-between align-items-center">
+                    <!-- Weather Card -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0 d-flex align-items-center gap-2">
+                                <i class="fas fa-cloud-sun text-primary"></i>
+                                Weather Forecast
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            {% for forecast in itinerary.weather %}
+                            <div class="weather-card mb-3">
+                                <div class="d-flex justify-content-between align-items-center w-100">
                                     <div>
-                                        <h6 class="mb-0">{{ forecast.date|default("N/A") }}</h6>
-                                        <p class="mb-0 text-muted small">{{ forecast.description|default("Weather data unavailable") }}</p>
+                                        <h6 class="mb-0">{{ forecast.date }}</h6>
+                                        <p class="text-muted small mb-0">{{ forecast.description }}</p>
                                     </div>
                                     {% if forecast.icon %}
                                     <div class="text-end">
-                                        <h3 class="mb-0">{{ forecast.temp|default(0)|int }}°C</h3>
+                                        <h3 class="mb-0">{{ forecast.temp|int }}°C</h3>
                                         <img src="http://openweathermap.org/img/wn/{{ forecast.icon }}.png" 
                                              alt="Weather icon" 
-                                             style="width: 50px;"
-                                             loading="lazy">
+                                             style="width: 50px;">
                                     </div>
                                     {% endif %}
                                 </div>
                             </div>
+                            {% endfor %}
                         </div>
-                        {% endfor %}
                     </div>
-                </div>
-                {% endif %}
 
-                <!-- Trip Details -->
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white border-bottom py-3">
-                        <h5 class="mb-0"><i class="fas fa-info-circle me-2 text-primary"></i>Trip Details</h5>
-                    </div>
-                    <div class="card-body">
-                        <dl class="row">
-                            {% if itinerary.start_location %}
-                            <dt class="col-sm-5 text-muted">Start Location</dt>
-                            <dd class="col-sm-7">{{ itinerary.start_location }}</dd>
-                            {% endif %}
-
-                            {% if itinerary.travel_date %}
-                            <dt class="col-sm-5 text-muted">Travel Dates</dt>
-                            <dd class="col-sm-7">
-                                {{ itinerary.travel_date|default("N/A") }} 
-                                <span class="text-primary">({{ itinerary.travel_days|default(0) }} days)</span>
-                            </dd>
-                            {% endif %}
-
-                            {% if itinerary.companions %}
-                            <dt class="col-sm-5 text-muted">Travel Group</dt>
-                            <dd class="col-sm-7 text-capitalize">{{ itinerary.companions }}</dd>
-                            {% endif %}
-
-                            {% if itinerary.budget %}
-                            <dt class="col-sm-5 text-muted">Budget Level</dt>
-                            <dd class="col-sm-7 text-capitalize">{{ itinerary.budget }}</dd>
-                            {% endif %}
-                        </dl>
+                    <!-- Trip Details -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0 d-flex align-items-center gap-2">
+                                <i class="fas fa-info-circle text-primary"></i>
+                                Trip Details
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <dl class="row">
+                                <div class="col-12 mb-3">
+                                    <dt>Start Location</dt>
+                                    <dd>{{ itinerary.start_location }}</dd>
+                                </div>
+                                <div class="col-12 mb-3">
+                                    <dt>Travel Dates</dt>
+                                    <dd>{{ itinerary.travel_date }} ({{ itinerary.travel_days }} days)</dd>
+                                </div>
+                                <div class="col-12 mb-3">
+                                    <dt>Travel Group</dt>
+                                    <dd class="text-capitalize">{{ itinerary.companions }}</dd>
+                                </div>
+                                <div class="col-12">
+                                    <dt>Budget Level</dt>
+                                    <dd class="text-capitalize">{{ itinerary.budget }}</dd>
+                                </div>
+                            </dl>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -363,97 +495,383 @@
 
         <!-- Action Buttons -->
         <div class="text-center mt-5 no-print">
-            <button onclick="window.print()" class="btn btn-primary btn-lg px-5 me-3">
-                <i class="fas fa-print me-2"></i>Print Itinerary
-            </button>
-            <button id="go-back-btn" class="btn btn-outline-primary btn-lg px-5">
-                <i class="fas fa-arrow-left me-2"></i>New Trip
-            </button>
-        </div>
+            <div class="d-flex gap-3 justify-content-center">
+                <button onclick="window.print()" class="btn btn-primary">
+                    <i class="fas fa-print me-2"></i>Save as PDF
+                </button>
 
-        <!-- Print Header -->
-        <div class="print-only text-center mb-4">
-            <h2>{{ itinerary.destination|default("Travel Itinerary") }}</h2>
-            <p class="text-muted">Generated on {{ now.strftime('%Y-%m-%d %H:%M') }}</p>
+                <button id="go-back-btn" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>New Trip
+                </button>
+            </div>
         </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="bg-dark text-white py-4 mt-5 no-print">
-        <div class="container text-center">
-            <p class="mb-0 small">&copy; 2024 AI Travel Planner. All rights reserved.</p>
+    <!-- Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title d-flex align-items-center gap-2">
+                        <i class="fas fa-pencil-alt text-primary"></i>
+                        Edit Itinerary - {{ itinerary.destination }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editForm" class="row g-4">
+                        <!-- Duration Section -->
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="mb-3 d-flex align-items-center gap-2">
+                                        <i class="fas fa-calendar-day text-primary"></i>
+                                        Trip Duration
+                                    </h6>
+                                    <div class="input-group">
+                                        <input type="number" id="newDays" 
+                                               class="form-control form-control-lg" 
+                                               min="1" max="14" 
+                                               value="{{ itinerary.travel_days }}">
+                                        <span class="input-group-text">days</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Replacements Section -->
+                        <div class="col-md-6">
+                            <div class="card h-100">
+                                <div class="card-body">
+                                    <h6 class="mb-3 d-flex align-items-center gap-2">
+                                        <i class="fas fa-exchange-alt text-primary"></i>
+                                        Location Replacements
+                                    </h6>
+                                    <div id="replacementsContainer" class="mb-3"></div>
+                                    <button type="button" class="btn btn-outline-primary w-100" 
+                                            onclick="addReplacementField()">
+                                        <i class="fas fa-plus-circle me-2"></i>Add Replacement
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                           <!-- Activities Section -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="mb-3 d-flex align-items-center gap-2">
+                    <i class="fas fa-plus-circle text-primary"></i>
+                    Add Activities
+                </h6>
+                <div class="row g-3">
+                    {% for activity in ['city', 'beaches', 'hiking', 'food'] %}
+                        {% if activity not in itinerary.activities %}
+                        <div class="col-md-6">
+                            <div class="activity-card p-3 rounded">
+                                <input type="checkbox" class="form-check-input" 
+                                       id="new_{{ activity }}" name="new_activities" 
+                                       value="{{ activity }}">
+                                <label class="form-check-label" for="new_{{ activity }}">
+                                    <i class="fas 
+                                        {% if activity == 'city' %}fa-city
+                                        {% elif activity == 'beaches' %}fa-umbrella-beach
+                                        {% elif activity == 'hiking' %}fa-hiking
+                                        {% else %}fa-utensils{% endif %} 
+                                        me-2"></i>
+                                    {{ activity|capitalize }}
+                                </label>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
         </div>
-    </footer>
+    </div>
+</div>
 
-    <!-- Scripts -->
-    <script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+</form>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-primary" onclick="submitUpdate()">
+        <i class="fas fa-save me-2"></i>Save Changes
+    </button>
+</div>
+</div>
+</div>
+</div>
 
-    <!-- Google Maps Integration -->
-    {% if google_api_key and itinerary.map_data and itinerary.map_data.places %}
-    <script>
-        function initMap() {
-            try {
-                const placesData = JSON.parse('{{ itinerary.map_data.places|tojson|safe }}');
-                
-                if (!placesData?.length) {
-                    console.error('No places data available');
+<!-- Print Header -->
+<div class="print-only text-center mb-4">
+    <h2>{{ itinerary.destination|default("Travel Itinerary") }}</h2>
+    <p class="text-muted">Generated on {{ now.strftime('%Y-%m-%d %H:%M') }}</p>
+</div>
+
+</main>
+
+<!-- Footer -->
+<footer class="bg-dark text-white py-4 mt-5 no-print">
+    <div class="container text-center">
+        <p class="mb-0 small">&copy; 2024 AI Travel Planner. All rights reserved.</p>
+    </div>
+</footer>
+
+<!-- Scripts -->
+<script src="{{ url_for('static', filename='js/bootstrap.bundle.min.js') }}"></script>
+
+<script>
+    // Replacement Field Management
+    function addReplacementField() {
+        const container = document.getElementById('replacementsContainer');
+        
+        try {
+            const placesData = JSON.parse('{{ itinerary.optimized_places|map(attribute="name")|list|tojson|safe }}');
+            const uniquePlaces = Array.from(new Set(placesData));
+
+            const div = document.createElement('div');
+            div.className = 'replacement-field mb-3 p-3';
+            
+            let optionsHTML = '';
+            uniquePlaces.forEach(name => {
+                const safeName = name.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                optionsHTML += `<option value="${safeName}">${safeName}</option>`;
+            });
+            
+            div.innerHTML = `
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-5">
+                        <select class="form-select replacement-select">
+                            ${optionsHTML}
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <select class="form-select type-select">
+                            <option value="city">City Attraction</option>
+                            <option value="beaches">Beach</option>
+                            <option value="hiking">Hiking Spot</option>
+                            <option value="food">Restaurant</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-danger w-100 remove-btn">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Add proper event listener instead of inline onclick
+            div.querySelector('.remove-btn').addEventListener('click', function() {
+                this.closest('.replacement-field').remove();
+            });
+
+            container.appendChild(div);
+
+        } catch (error) {
+            console.error('Error creating replacement field:', error);
+            alert('Could not load locations. Please try again.');
+        }
+    }
+
+    // Submit Update Handler
+   async function submitUpdate() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+    const submitBtn = document.querySelector('#editModal .btn-primary');
+    
+    try {
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Saving...';
+        submitBtn.disabled = true;
+
+        const modifications = {
+            travel_days: parseInt(document.getElementById('newDays').value),
+            replacements: Array.from(document.querySelectorAll('.replacement-field')).map(field => ({
+                old: field.querySelector('.replacement-select').value,
+                type: field.querySelector('.type-select').value
+            })),
+            new_activities: Array.from(document.querySelectorAll('input[name="new_activities"]:checked'))
+                            .map(cb => cb.value)
+        };
+
+        const response = await fetch(`/itinerary/{{ itinerary._id }}/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+            },
+            credentials: 'include',  // Add this line
+            body: JSON.stringify({ modifications })
+        });
+
+        const data = await response.json();
+        
+        if (!response.ok) throw new Error(data.error || 'Failed to save changes');
+        if (!data.new_itinerary_id) throw new Error('Invalid server response');
+
+        // Redirect immediately without timeout
+        window.location.href = `/itinerary/${data.new_itinerary_id}`;
+
+    } catch (error) {
+        console.error('Update failed:', error);
+        alert(`Error: ${error.message}`);
+    } finally {
+        submitBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Changes';
+        submitBtn.disabled = false;
+        modal.hide();
+    }
+}
+</script>
+
+<!-- Google Maps Script -->
+<script src="https://maps.googleapis.com/maps/api/js?key={{ google_api_key }}&libraries=places&callback=initMap" async defer></script>
+
+<script>
+    // Map Initialization
+    function initMap() {
+        fetch(`/get_map_data/{{ itinerary._id }}`)
+            .then(response => {
+                if (!response.ok) throw new Error('Network response failed');
+                return response.json();
+            })
+            .then(data => {
+                if (!data?.places?.length) {
+                    showMapError('No location data available');
                     return;
                 }
 
-                const mapOptions = {
-                    zoom: 12,
-                    center: { 
-                        lat: parseFloat(placesData[0].lat),
-                        lng: parseFloat(placesData[0].lng)
-                    },
-                    mapTypeId: 'roadmap',
-                    streetViewControl: false
-                };
+                // Set map center using start location coordinates or first place
+                const mapCenter = data.start_lat && data.start_lng ? 
+                    { lat: Number(data.start_lat), lng: Number(data.start_lng) } : 
+                    { lat: Number(data.places[0].lat), lng: Number(data.places[0].lng) };
 
-                const map = new google.maps.Map(document.getElementById('routeMap'), mapOptions);
+                const map = new google.maps.Map(document.getElementById('routeMap'), {
+                    zoom: 12,
+                    center: mapCenter,
+                    mapTypeId: 'roadmap',
+                    streetViewControl: false,
+                    gestureHandling: 'cooperative'
+                });
+
                 const directionsService = new google.maps.DirectionsService();
                 const directionsRenderer = new google.maps.DirectionsRenderer({
                     map: map,
-                    suppressMarkers: true
-                });
-
-                const waypoints = placesData.slice(1).map(place => ({
-                    location: { lat: parseFloat(place.lat), lng: parseFloat(place.lng) },
-                    stopover: true
-                }));
-
-                directionsService.route({
-                    origin: "{{ itinerary.start_location|default('') }}",
-                    destination: "{{ itinerary.start_location|default('') }}",
-                    waypoints: waypoints,
-                    optimizeWaypoints: true,
-                    travelMode: 'DRIVING'
-                }, (response, status) => {
-                    if (status === 'OK') {
-                        directionsRenderer.setDirections(response);
+                    suppressMarkers: false,
+                    preserveViewport: true,
+                    polylineOptions: {
+                        strokeColor: '#2563eb',
+                        strokeOpacity: 0.8,
+                        strokeWeight: 4
                     }
                 });
 
-            } catch (error) {
-                console.error('Map initialization error:', error);
-                const mapContainer = document.getElementById('routeMap');
-                if (mapContainer) {
-                    mapContainer.innerHTML = '<div class="alert alert-danger m-3">Failed to load map</div>';
-                }
-            }
-        }
-    </script>
-    <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key={{ google_api_key }}&callback=initMap">
-    </script>
-    {% endif %}
+                // Use coordinates for origin/destination if available
+                const origin = data.start_lat && data.start_lng ?
+                    new google.maps.LatLng(data.start_lat, data.start_lng) :
+                    data.start_location;
 
-    <!-- App Scripts -->
-    <script>
+                const waypoints = data.places.map(place => ({
+                    location: new google.maps.LatLng(
+                        Number(place.lat), 
+                        Number(place.lng)
+                    ),
+                    stopover: true
+                }));
+
+                // Remove last waypoint if same as origin
+                if (waypoints.length > 0 && 
+                    waypoints[waypoints.length - 1].location.equals(origin)) {
+                    waypoints.pop();
+                }
+
+                directionsService.route({
+                    origin: origin,
+                    destination: origin,
+                    waypoints: waypoints,
+                    optimizeWaypoints: true,
+                    travelMode: 'DRIVING',
+                    provideRouteAlternatives: false,
+                    avoidFerries: true,
+                    avoidHighways: false,
+                    avoidTolls: false
+                }, (response, status) => {
+                    if (status === 'OK') {
+                        directionsRenderer.setDirections(response);
+                        addCustomMarkers(map, data.places);
+                        adjustMapBounds(map, response.routes[0].bounds);
+                    } else {
+                        console.error('Directions request failed:', status);
+                        showMapError('Could not calculate route directions');
+                        addCustomMarkers(map, data.places);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Map initialization error:', error);
+                showMapError('Failed to load travel map');
+            });
+    }
+
+    // Helper functions
+    function addCustomMarkers(map, places) {
+        places.forEach(place => {
+            new google.maps.Marker({
+                position: { 
+                    lat: Number(place.lat), 
+                    lng: Number(place.lng) 
+                },
+                map: map,
+                title: place.name,
+                icon: {
+                    url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                    scaledSize: new google.maps.Size(32, 32)
+                }
+            });
+        });
+    }
+
+    function adjustMapBounds(map, bounds) {
+        // Add 10% padding around the route
+        const padding = 0.1;
+        map.fitBounds(bounds, {
+            top: padding,
+            bottom: padding,
+            left: padding,
+            right: padding
+        });
+    }
+
+    function showMapError(message) {
+        const mapContainer = document.getElementById('routeMap');
+        mapContainer.innerHTML = `
+            <div class="alert alert-danger p-3 m-2">
+                <i class="fas fa-map-marker-slash me-2"></i>
+                ${message}
+            </div>
+        `;
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+        // Back button handler
         document.getElementById('go-back-btn').addEventListener('click', () => {
             window.location.href = '/';
         });
-    </script>
+
+        // Replacement field handlers
+        document.querySelectorAll('.replacement-field .remove-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.closest('.replacement-field').remove();
+            });
+        });
+
+        // Initialize Bootstrap tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(tooltipTriggerEl => {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
     {% endif %}
 </body>
 </html>
