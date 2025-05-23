@@ -1,0 +1,5 @@
+FLASK_SECRET_KEY=your_secret_key
+MONGO_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/dbname
+GOOGLE_API_KEY=your_google_key
+OPENWEATHER_API_KEY=your_weather_key
+OPENAI_API_KEY=your_openai_key
